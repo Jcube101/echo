@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+frontend/dist/
+
+# Data — never commit audio, features, or databases
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.wav
+*.mp3
+*.m4a
+*.opus
+*.ogg
+*.webm
+
+# Overnight verification artifacts (screenshots/logs live on the Pi only;
+# VERIFICATION_LOG.md in the repo root IS committed)
+verification/
+
+# Env & misc
+.env
+.env.*
+*.log
+.DS_Store
