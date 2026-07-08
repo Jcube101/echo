@@ -9,8 +9,9 @@ node_modules/
 dist/
 frontend/dist/
 
-# Data — never commit audio, features, or databases
-data/
+# Data — never commit audio, features, or databases (runtime dir at repo root
+# only; note frontend/src/data/ holds committed source like sample.json)
+/data/
 *.sqlite
 *.sqlite3
 *.db
