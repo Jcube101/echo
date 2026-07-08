@@ -7,6 +7,84 @@ Newest at the bottom of each section.
 
 ## Decisions with rationale
 
+### Fixed world scale, density fix, smoothing, visual overhaul (2026-07-08, post-launch)
+
+**Part A — density bug root cause.** The `librosa.effects.trim` added the prior
+session shrank the frame *timeline* for clips with quiet passages, so a clip
+with silence emitted ~9 pts/sec of its real duration instead of ~50 (a 2.8 s
+clip → 54 points). **Fix: removed trimming entirely.** Quiet frames are HELD
+(not dropped), which already prevents the origin spikes, so density is now
+~50 pts/sec of the full clip for all clips (verified 45–55 across lengths),
+downsampling only past the 3000-point / 60 s ceiling.
+
+**pyin range raised.** `FMAX` 2093 → **4000 Hz** (and `FMIN` 65 → 50) so high
+birdsong (the reference clip is ~2.5 kHz) is actually detected instead of
+collapsing to the unvoiced 220 Hz fallback. Aligned with the fixed pitch scale.
+
+**Part B — fixed world scale (tunables in `extraction.py`).** Every axis now
+means the same range for every clip (comparable across the gallery). Each raw
+feature is transformed, clamped to fixed bounds, and mapped into a `[-WORLD,
+WORLD]` cube with `WORLD = 3`:
+- **pitch** = `log2(Hz)` over `PITCH_HZ_RANGE = (50, 4000)` Hz
+- **timbre** = `log2(centroid/55)` over `TIMBRE_RAW_RANGE = (2, 8)` (from data:
+  p50≈4.8, p95≈6.5)
+- **motion** = `log1p(onset_strength)` over `MOTION_RAW_RANGE = (0, 3)` — onset
+  is heavy-tailed (p50/p95/p99 ≈ 0.5/3.3/10.4), so log-compressed then clamped
+  to the box edge; this puts the steady baseline near the floor with transient
+  spikes reaching up (matches the reference).
+Out-of-range values clamp to the box edge (never stretch the scale). The
+frontend plots these stored coords directly — **no per-clip normalization**.
+Axis layout: X = pitch, Y(up) = motion, Z = timbre.
+
+**Part C — smoothing.** `SMOOTH_WINDOW = 5` (~100 ms) odd-window moving average
+on pitch/timbre/motion; `AMP_SMOOTH_WINDOW = 3` light touch on amplitude (keep
+transient peaks — it drives point size). Reduced frame-to-frame zigzag (mean
+2nd-difference) by ~78 % on a test clip while preserving overall shape.
+
+**Migration.** `verification/migrate_features.py` re-extracts every history
+clip's stored features from the on-disk audio into the new space (overwrites
+`data/features/<id>.json`, no schema change). Ran on all 21 clips.
+
+**Part D — scene visuals (`Scene.jsx`).** Monochrome **teal** single hue,
+brightness/size from amplitude (no rainbow). One `THREE.Points` + a custom
+shader with a radial-gradient sprite and **additive blending** for cheap glow
+(no post-processing bloom → mobile-safe), so 3000 points stay one draw call.
+Faint teal connecting `Line` (opacity ~0.16). Fixed world box: wireframe edges
++ gridded floor/back/left walls + integer ticks (`-3..3`) + billboarded axis
+names. Playhead restyled to a larger teal-white additive glow sprite (not a
+hard white ball). **Framing** sets camera *distance* from the viewport aspect
+so the box fills `FILL = 0.78` of the **shorter** dimension in any orientation
+(direction + polar angle stay locked — the no-pole-flip guarantee holds).
+
+### Mobile camera + trail-spike bug fixes (2026-07-08, post-launch)
+Three mobile bugs from Job's phone testing. Tunables worth revisiting:
+- **Locked polar angle = `POLAR_ANGLE` ≈ 1.130 rad (64.7°)** in `Scene.jsx`,
+  derived at load from the initial camera position
+  `[EXTENT*2.1, EXTENT*1.4, EXTENT*2.1]` via `acos(y/‖pos‖)`. `min` and `max`
+  polar are both pinned to it, so vertical drag can't flip past the pole. If
+  the default camera framing is ever changed, this recomputes automatically.
+- **Zoom and pan are disabled** (`enableZoom={false}`, `enablePan={false}`,
+  `target=[0,0,0]`) — a deliberate lock for now. Disabling zoom also removes
+  the "camera dollies inside the geometry → white screen" path. Do not
+  re-enable without revisiting a near-plane/`minDistance` clamp.
+- **Axis labels are billboarded** (drei `<Billboard>`) so they stay upright and
+  correctly-oriented (never mirrored) at any azimuth — the mirrored-label
+  symptom had two causes (pole flip *and* orbiting to the back); the polar lock
+  fixes the first, billboarding the second.
+- **`dpr` capped at 2** and a `<Resizer>` (ResizeObserver on the canvas parent +
+  a delayed re-apply on `orientationchange`) keeps the drawing buffer synced to
+  the container across resizes/rotations. Canvas is wrapped in an
+  `absolute inset-0` div so it has a real non-zero size before first render.
+- **Silence trim `top_db = 30`** (`TRIM_TOP_DB`) — trims leading/trailing
+  silence before extraction so the trail can't spike to the origin at the clip
+  boundaries. Lower = more aggressive; raise if it ever eats soft signal.
+- **Quiet-frame hold `SILENCE_RMS_FRAC = 0.06`** — a frame whose RMS is below
+  6% of the clip's peak RMS holds the previous pitch/timbre/motion (all three,
+  not just pitch) instead of collapsing an axis to 0. Amplitude still reflects
+  the real low energy (small/dim point), so a pause reads as a held cluster,
+  not a needle to the origin. Frame times keep the *original* timeline (trim
+  offset added back) so the untrimmed playback copy still scrub-syncs.
+
 ### Layout — backend at repo root (Phase 0)
 Python backend (`main.py`, `extraction.py`, `db.py`, `storage.py`) lives at the
 repo root rather than a `backend/` subfolder, so systemd can run

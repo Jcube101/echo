@@ -308,3 +308,156 @@ No stop condition hit. Echo v1 is live at **https://echo.job-joseph.com** on
 port **8014** (systemd `echo.service`, enabled). Full evidence above; all
 screenshots in `verification/`. Manual follow-up for Job: live phone-mic
 recording test (see LEARNINGS.md).
+
+---
+
+# Post-launch mobile bug fixes — 2026-07-08
+
+Three bugs from Job's live Android (Chrome) testing. Scope: only `Scene.jsx`
+(react-three-fiber) and `extraction.py`. No schema/deploy/API changes.
+
+## Bug 1 — Gimbal flip / mirrored labels — PASS
+
+**Fix:** locked `min/maxPolarAngle` to the camera's initial polar angle
+(`POLAR_ANGLE ≈ 1.130 rad / 64.7°`, derived from the camera position), disabled
+pan + zoom, pinned `target=[0,0,0]`, and billboarded the axis labels.
+
+**Evidence (`verification/verify_mobile.mjs`, Pixel 5 emulation, touch):**
+```
+verticalDragDiff:   0.00000   verticalLocked: true    (large vertical drag → pixel-identical view; no pole flip)
+horizontalDragDiff: 0.97971   horizontalRotated: true (horizontal drag still rotates)
+console/page errors: 0 / 0
+```
+Screenshots: `mobile_bugfix_1_initial.png`, `_2_after_vertical_drag.png`
+(identical to initial), `_3_after_horizontal_drag.png` (rotated, **labels
+read upright/correct — not mirrored** after billboarding).
+
+## Bug 2 — White screen / inside-geometry on mobile — PASS
+
+**Fix:** `dpr` capped at 2; `<Resizer>` (ResizeObserver on canvas parent +
+delayed `orientationchange` re-apply) syncs the drawing buffer to the
+container; canvas wrapped in an `absolute inset-0` div for a real non-zero
+size before first render; zoom disabled removes the dolly-inside path.
+
+**Evidence (same run, portrait→landscape resize + orientationchange):**
+```
+portrait : canvas 393×429 fills parent 393×429 ✓   buffer 786×858 = client×2 (dpr cap) ✓
+landscape: canvas 727×139 fills parent 727×139 ✓   buffer 1454×278 = client×2 (dpr cap) ✓
+portraitFills/landscapeFills: true/true   dprOk: true/true
+```
+Screenshot `mobile_bugfix_4_landscape.png` — canvas fills its container, scene
+centered, no white flash, no seam/cutoff.
+
+## Bug 3 — Trail spikes to the origin — PASS
+
+**Fix:** `librosa.effects.trim(top_db=30)` removes leading/trailing silence
+(offset added back so frame times stay on the original timeline for playback
+sync); quiet frames (RMS < 6% of peak) hold pitch **and** timbre **and** motion
+(not just pitch); amplitude stays real.
+
+**Evidence (`verification/verify_extraction.py`, OLD-vs-NEW in normalized render
+space; "origin-dip" = an isolated inward needle toward the quiet corner —
+the reported artifact — vs. legitimate outward onset "peaks"):**
+```
+silence_test.wav (leading+mid+trailing silence):
+   OLD  origin-dips= 2  (peaks=7)
+   NEW  origin-dips= 0  (peaks=2)   frames near-zero on all 3 axes: 0
+d32aaaddeeda.opus (ambient, uniformly energetic):
+   OLD  origin-dips= 0     NEW  origin-dips= 0   (never had the bug)
+SUMMARY: OLD origin-dips total 2 → NEW 0   RESULT: PASS
+```
+Legitimate onset-strength peaks on the motion axis are preserved (that's what
+"motion" means); only the silence-collapse dips were removed.
+
+**Live production confirm:** `POST https://echo.job-joseph.com/upload` of the
+silence clip → 206 pts, `first t=0.76 / last t=4.86` within a 5.6 s clip
+(silence trimmed, timeline preserved), timbre min `3.012` (no longer collapsing
+to ~0).
+
+## Redeploy
+`npm run build` → `sudo -n systemctl restart echo` (also loads the new
+extraction code). `systemctl is-active echo` → `active`;
+`https://echo.job-joseph.com/` and `/history` → HTTP 200.
+
+**Deviation:** added label billboarding beyond the literal "lock polar angle"
+instruction — the mirrored-label symptom persists under (intended) horizontal
+rotation without it. Small, in-scope (Scene component only), directly serves
+the reported symptom. Flagged for review.
+
+---
+
+# Fixed scale + density + smoothing + visual overhaul — 2026-07-08
+
+Scope: `extraction.py` (+ pyin range) and `Scene.jsx`/`features.js`. Migration
+of stored features. No schema/API/endpoint changes. Order A→B→C→(migrate)→D.
+
+## Part A — Point-density bug — PASS
+
+**Root cause:** `librosa.effects.trim` (prev session) shrank the frame timeline
+for clips with quiet passages → ~9 pts/sec of real duration instead of ~50.
+Trace:
+```
+25bd6d1c: full 2.8s/141 frames → TRIMMED to 1.1s/54 frames  (the "55 points" bug)
+39276b0e: full 3.0s/151 frames → trimmed 3.0s/151            (no silence, unaffected)
+```
+**Fix:** removed trimming; quiet frames are HELD, not dropped. Re-extracted
+3 clips of different lengths:
+```
+test.wav     5.0s → 251 pts → 50.2 pts/sec
+25bd6d1c    2.8s → 141 pts → 50.0 pts/sec   (was 54)
+16b9be16    6.4s → 322 pts → 50.3 pts/sec
+```
+All within 45–55. GATE (density 44–56) added to `_self_check`. **PASS.**
+
+## Part B — Fixed world scale — PASS
+
+Fixed per-axis bounds mapped into `[-3,3]`, clamped to the edge (constants +
+derivation in LEARNINGS). pyin `FMAX` raised 2093→4000 Hz so high birdsong is
+detected (25bd6d1c went from a collapsed 220 Hz fallback to ~3.75 kHz → sits
+high on pitch). Frontend plots stored coords directly (no per-clip normalize).
+**Acceptance:** two clips render in the SAME box extents, occupying visibly
+different regions — `visual_parity_desktop.png` (sample, mid cluster) vs
+`visual_parity_loaded_clip.png` (clip 7139e141484e, lower vertical trail).
+Live upload check: pitch/timbre/motion all within [-3,3], amplitude 0..1. **PASS.**
+
+## Part C — Smoothing — PASS
+
+`SMOOTH_WINDOW=5` on pitch/timbre/motion, `AMP_SMOOTH_WINDOW=3` on amplitude.
+Before/after on clip 7139e141484e (mean |2nd difference| = zigzag):
+```
+unsmoothed jitter: 0.1527
+smoothed  jitter:  0.0343   → 78% reduction (trail flows, shape kept)
+```
+**PASS.**
+
+## Migration — PASS
+
+`verification/migrate_features.py` re-extracted **all 21** history clips into
+the new fixed-scale + smoothed space (overwrote `data/features/*.json`); every
+clip reported ~50 pts/sec. Bundled `sample.json` regenerated from a migrated
+clip.
+
+## Part D — Scene visual overhaul — PASS
+
+Monochrome teal glow (additive sprite, single `THREE.Points`), faint lines,
+fixed world box with gridded walls + integer ticks + billboarded axis names,
+aspect-aware framing (box fills ~78% of the shorter viewport dim), restyled
+glow playhead. **Screenshots (console clean, 0 errors all runs):**
+- `visual_parity_desktop.png` — box/grid/ticks/monochrome cluster, framed.
+- `visual_parity_mobile_1_initial.png` (Pixel 5 portrait) — full box fits width.
+- `visual_parity_mobile_4_landscape.png` — fills container, no white flash.
+- `visual_parity_loaded_clip.png` — migrated clip + glow playhead + spectrogram.
+- `visual_parity_public.png` — same scene through `echo.job-joseph.com`.
+Camera lock (Bug 1) + canvas fill (Bug 2) re-confirmed by `verify_mobile.mjs`
+(verticalLocked true, horizontalRotated true, portrait/landscape fills true).
+Side-by-side vs the reference: box, gridded walls, numeric ticks, dense
+monochrome teal cluster + faint trail — all present. **PASS.**
+
+## Redeploy
+`npm run build` → `sudo -n systemctl restart echo` (new extraction + new build).
+`systemctl is-active echo` → active. `https://echo.job-joseph.com/` and
+`/history` → HTTP 200; live upload → 50.2 pts/sec, world coords in [-3,3].
+
+**Deviation:** raised pyin `FMAX` to 4000 Hz — not explicitly requested, but the
+fixed pitch scale (50–4000) was useless without it (birds > 2093 Hz collapsed
+to the fallback). In-scope (extraction module). Flagged for review.
