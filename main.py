@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from db import AUDIO_DIR, ROOT, Clip, SessionLocal, init_db
 from extraction import MAX_DURATION_S
 from storage import (MAX_UPLOAD_BYTES, ProcessingError, process_audio)
+import samples as sample_lib
 
 REC_WRAPPER = os.path.expanduser("~/bin/rec")
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -156,6 +157,33 @@ def audio(filename: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio not found.")
     return FileResponse(path, media_type="audio/ogg")
+
+
+# --- Sample library (Part D) --------------------------------------------------
+# Curated example clips, permanent + never in the retention-managed clips table.
+# Route order: the two-segment /samples/audio/{filename} is declared before
+# /samples/{sample_id} so there's no ambiguity.
+@app.get("/samples")
+def samples_list():
+    return sample_lib.list_samples()
+
+
+@app.get("/samples/audio/{filename}")
+def sample_audio(filename: str):
+    if "/" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Bad filename.")
+    path = sample_lib.AUDIO_DIR / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Sample audio not found.")
+    return FileResponse(path, media_type="audio/ogg")
+
+
+@app.get("/samples/{sample_id}")
+def sample_item(sample_id: str):
+    data = sample_lib.get_sample(sample_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Sample not found.")
+    return data
 
 
 @app.get("/api/health")

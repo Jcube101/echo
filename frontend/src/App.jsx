@@ -3,6 +3,7 @@ import Scene from './components/Scene.jsx'
 import Controls from './components/Controls.jsx'
 import PlaybackBar from './components/PlaybackBar.jsx'
 import Gallery from './components/Gallery.jsx'
+import Samples from './components/Samples.jsx'
 import { uploadAudio } from './lib/api.js'
 import sample from './data/sample.json'
 
@@ -31,6 +32,8 @@ export default function App() {
   const [message, setMessage] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
+  const [samplesOpen, setSamplesOpen] = useState(false)
+  const [sampleMeta, setSampleMeta] = useState(null) // attribution when a sample is loaded
   const [historyKey, setHistoryKey] = useState(0) // bump to refresh the gallery
 
   const busy = status === 'processing'
@@ -52,6 +55,7 @@ export default function App() {
     setClipId(res.id || null)
     setPlayheadSec(0)
     setDuration(res.duration_s || (res.features.length ? res.features[res.features.length - 1].t : 0))
+    setSampleMeta(res.source_type === 'sample' ? res : null)
   }, [])
 
   // A freshly created clip: apply it AND refresh the gallery list.
@@ -88,6 +92,13 @@ export default function App() {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Controls busy={busy} onStatus={onStatus} onResult={onResult} />
+          <button
+            onClick={() => setSamplesOpen(true)}
+            className="px-3 py-2 rounded-md text-sm font-medium bg-white/10 hover:bg-white/20 text-slate-100"
+            title="Curated example birdcalls"
+          >
+            🐦 Samples
+          </button>
           <button
             onClick={() => setGalleryOpen(true)}
             className="px-3 py-2 rounded-md text-sm font-medium bg-white/10 hover:bg-white/20 text-slate-100"
@@ -134,6 +145,20 @@ export default function App() {
         <div className="absolute bottom-3 left-3 text-[11px] text-slate-400 bg-panel/70 rounded px-2 py-1 backdrop-blur">
           {features.length} points{clipId ? ` · clip ${clipId}` : ' · sample'} · drag to orbit
         </div>
+
+        {/* Attribution credit while a curated sample is loaded (required for the
+            publicly-served CC BY-NC-SA recordings) */}
+        {sampleMeta && (
+          <div className="absolute bottom-3 right-3 max-w-[70vw] text-[11px] bg-panel/80 rounded-md px-3 py-2 backdrop-blur border border-white/10">
+            <span className="text-slate-200 font-medium">🐦 {sampleMeta.species}</span>
+            <span className="text-slate-500"> — rec. {sampleMeta.recordist} · </span>
+            <a href={sampleMeta.license_url} target="_blank" rel="noopener noreferrer"
+               className="text-slate-400 underline decoration-dotted hover:text-slate-200">{sampleMeta.license}</a>
+            <span className="text-slate-500"> · </span>
+            <a href={sampleMeta.source_url} target="_blank" rel="noopener noreferrer"
+               className="text-indigo-300 hover:text-indigo-200">Xeno-canto ↗</a>
+          </div>
+        )}
       </main>
 
       <PlaybackBar
@@ -142,6 +167,14 @@ export default function App() {
         spectrogram={spectrogram}
         playheadSec={playheadSec}
         onSeek={setPlayheadSec}
+      />
+
+      <Samples
+        open={samplesOpen}
+        onClose={() => setSamplesOpen(false)}
+        currentId={clipId}
+        onLoaded={applyClip}
+        onStatus={onStatus}
       />
 
       <Gallery

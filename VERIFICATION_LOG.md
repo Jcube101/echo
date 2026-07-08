@@ -461,3 +461,111 @@ monochrome teal cluster + faint trail — all present. **PASS.**
 **Deviation:** raised pyin `FMAX` to 4000 Hz — not explicitly requested, but the
 fixed pitch scale (50–4000) was useless without it (birds > 2093 Hz collapsed
 to the fallback). In-scope (extraction module). Flagged for review.
+
+---
+
+# Session 5 — Slow-processing fix, boundary trim, spectrogram polish, sample library (2026-07-08)
+
+## Part A — Slow processing / "Failed to fetch" — PASS
+
+**Root cause confirmed by profiling, not assumed.** `librosa.pyin` is 99% of
+extraction time; the bottleneck is its default pitch resolution (0.1 semitone).
+Measured per-step on the Pi (isolated): 20 s clip → 12.4 s pyin; a synthesized
+60 s clip → **37.0 s** pyin. Under real Pi load (the original LEARNINGS note
+measured ~24 s for a 5 s clip, ~5× my isolated numbers) a longer clip could
+approach Cloudflare's edge limit and drop the connection → browser
+"Failed to fetch".
+
+**Timeouts audited (logged):** uvicorn runs bare single-worker; its only timeout
+is `--timeout-keep-alive` (idle keep-alive, not request processing) — no handler
+timeout. cloudflared's echo ingress has no per-service timeout, but Cloudflare's
+edge enforces a hard ~100 s origin-response limit (HTTP 524) on the free plan.
+Nothing in the chain is shorter than processing needs *today*, so the fix is to
+cut processing time for margin. **No timeout config change made.**
+
+**Fix:** `PYIN_RESOLUTION = 0.25` (25 cents). 60 s clip pyin **37 s → 6.5 s**
+(full `extract_features` 8.5 s, spectrogram 0.09 s) — well under the 15 s target,
+single-threaded (multiprocessing/chunking NOT needed, so not built). Accuracy
+cost vs 0.1: ~6 cents mean / 15 cents p95 — imperceptible, < ¼ semitone. 0.5 was
+rejected (octave errors). fmin/fmax left at 50–4000 Hz.
+
+**End-to-end (real uploads through the running app, 0 console/page errors):**
+- Local `:8014`, 19 s clip (`asian-koel-XC1089796.mp3`) → rendered in **7.4 s**
+  round-trip. `session5_partA_upload_19s.png`.
+- **Public tunnel** `echo.job-joseph.com`, 19.8 s clip
+  (`rose-ringed-parakeet-XC1142621.mp3`) → rendered, 976 pts, 0 errors — the
+  original failing path. `session5_partA_public_upload.png`. **PASS.**
+
+## Part B — Origin-collapse fix (boundary-only adaptive trim) — PASS
+
+Reintroduced leading/trailing silence trimming, **interior untouched**, with an
+adaptive threshold: signal must exceed the clip's own noise floor (10th-pct RMS)
+by `TRIM_MARGIN_DB=8`, capped so the threshold can never rise within
+`TRIM_MIN_SNR_DB=25` of the peak — the cap is what prevents the old `top_db=30`
+failure where a loud transient made the trim eat quiet-but-real boundary signal.
+Frame times get the trim offset added back → the untrimmed playback copy still
+scrub-syncs.
+
+**Regression check on `25bd6d1c6102` (explicit before/after):** its envelope is
+**1.55 s of pure digital silence (flat −80 dB) then real birdsong 1.6–2.8 s**
+(inspected frame-by-frame). Before: 141 frames over 2.8 s (≈77 leading frames
+sat at the origin — the artifact). After: **64 frames, span 1.54–2.80 s, 50.8
+pts/s over the analyzed span** — only the genuine silence removed, **100 % of
+the real call kept**. This is the intended fix, NOT the old signal-eating
+over-trim (which cut into the call itself). SELF-CHECK PASS.
+
+**Origin cluster gone (data probe in-page):** first 5 frames of the migrated
+`25bd6d1c` are all at distance **3.21** from the origin (out at the real signal),
+**0 frames within 0.5 of the origin**. Parakeet/koel samples (leading silence
+trimmed) render with the trail out in the box, no near-origin needle
+(`session5_partD_sample_loaded.png`, `session5_partC_spectrogram_mobile.png`).
+
+## Part C — Spectrogram polish — PASS
+
+Rewrote `Spectrogram.jsx`: native cols×bins image drawn to an offscreen canvas,
+then **bilinearly upscaled** onto a container-sized canvas (× dpr, capped 2) via
+a `ResizeObserver` + `orientationchange` handler → fills any width crisply, no
+`image-rendering: pixelated` blocks. Added a **frequency axis** (Hz, mel/log-
+spaced: 250/500/1k/2k/4k/8k, positions computed server-side in
+`compute_spectrogram.freq_ticks` so the frontend needs no mel formula) with faint
+gridlines, and a **time axis** (mm:ss, aligned to the linear scrubber). Wrapped
+in a rounded bordered panel matching the other dark-UI panels.
+- `session5_partC_spectrogram_desktop.png` — labeled Hz + time axes, smooth.
+- `session5_partC_spectrogram_mobile.png` / `_crop.png` (390×844, dpr 2) — canvas
+  buffer 604 px for 302 px CSS width, fills cleanly, both axes legible. **PASS.**
+
+## Part D — In-app sample library — PASS
+
+New **permanent, non-rotating** store under `samples/` (audio/ opus + features/
+JSON + `samples.json`), entirely separate from `data/` and `test-fixtures/`.
+Samples are **never in the `clips` table**, so the 50-entry retention cleanup
+cannot evict them — confirmed: 26 clips in DB, `/history` lists 26, **no sample
+slug present in either**. Seeded by `verification/seed_samples.py` (attribution
+parsed straight from `test-fixtures/xeno-canto/MANIFEST.md`). Endpoints
+`GET /samples`, `/samples/{id}`, `/samples/audio/{file}` (declared before the
+StaticFiles mount). Committed as product assets (gitignore negation for
+`samples/audio/*.opus`).
+
+3 species, one clip each: Asian Koel (Albert Noorlander), Common Myna (David
+Darrell-Lambert), Rose-ringed Parakeet (Arjun Dutta) — all CC BY-NC-SA 4.0.
+A left-side "🐦 Samples" drawer (distinct from the right-side History) shows each
+card with **species, scientific name, recordist, license (→ license URL), and a
+Xeno-canto XC# source link**; a compact attribution credit also shows in the main
+view while a sample is loaded. Clicking a sample loads + renders in ~2.9 s.
+- `session5_partD_samples_drawer.png` — 3 cards, full attribution visible.
+- `session5_partD_sample_loaded.png` — koel trail + bottom-right credit.
+- `session5_partD_samples_mobile.png` — attribution on phone width. **PASS.**
+
+## Migration + redeploy
+`verification/migrate_features.py` re-ran over all 25 history clips (re-extracts
+with the new resolution + boundary trim + freq_ticks; 24 s total). `npm run build`
+→ `sudo -n systemctl restart echo` → `systemctl is-active echo` active.
+`https://echo.job-joseph.com/` HTTP 200, `/samples` returns the 3 species,
+public 19.8 s upload renders. New build + backend live.
+
+**Deviations:** (1) The v2 Xeno-canto premise from Part-A's brief was moot — the
+fix is purely `PYIN_RESOLUTION`. (2) Two real test-upload clips
+(`ea191859bc7f`, `6fcabffa7248`) were added to production history by the
+end-to-end upload checks — harmless real birdcalls, will age out via retention.
+(3) `samples/` opus + feature JSON committed to git (small product assets) —
+new precedent vs the global audio ignore; gitignore negation added.

@@ -47,8 +47,33 @@ FMIN = 50.0                  # pyin floor — aligned with the fixed pitch scale
 FMAX = 4000.0                # pyin ceil — raised from 2093 so high birdsong
                              # (the reference clip is ~2.5 kHz) is actually
                              # detected, not collapsed to the unvoiced fallback
+PYIN_RESOLUTION = 0.25       # pyin pitch-bin size in fractions of a semitone.
+                             # librosa's default 0.1 (10 cents) is the runtime
+                             # bottleneck on the Pi — pyin cost scales with the
+                             # bin count. 0.25 (25 cents) is ~5.6x faster
+                             # (60 s clip: ~37 s -> ~6.5 s of pyin) while shifting
+                             # detected pitch by only ~6 cents mean / 15 cents p95
+                             # vs 0.1 — imperceptible in the visualization, and
+                             # well below one semitone. 0.5 was too coarse (octave
+                             # errors). This is what keeps /upload under every
+                             # timeout in the chain. See LEARNINGS.md.
 SILENCE_RMS_FRAC = 0.06      # a frame is "quiet" (hold its shape) if its RMS is
                              # below this fraction of the clip's peak RMS.
+
+# --- Boundary silence trim (Part B) -------------------------------------------
+# Leading/trailing silence is removed so the trail doesn't open/close with a
+# cluster of near-origin points ("starts from nothing" artifact). The INTERIOR
+# is never touched — quiet passages between sounds are HELD (SILENCE_RMS_FRAC).
+# The threshold is ADAPTIVE: it sits TRIM_MARGIN_DB above the clip's own noise
+# floor, so a quiet phone recording and a loud close-up are judged by their own
+# noise level, not one global dB value. It is also capped so it can never rise
+# within TRIM_MIN_SNR_DB of the peak — that cap is what prevents the old
+# top_db=30 failure, where a single loud transient inflated the peak and made
+# the trim eat quiet-but-real signal at the boundaries.
+TRIM_FLOOR_PCT = 10          # noise-floor estimate = this percentile of RMS(dB)
+TRIM_MARGIN_DB = 8.0         # signal must exceed the noise floor by this much
+TRIM_MIN_SNR_DB = 25.0       # never treat frames within this of the peak as silence
+TRIM_PAD_FRAMES = 3          # keep ~60 ms of margin around the detected signal
 
 # --- Fixed world scale (Part B) -----------------------------------------------
 # The axes mean the SAME value range for every clip, so clips are comparable
@@ -118,6 +143,40 @@ def _hold_forward(values: np.ndarray, valid: np.ndarray, fallback: float) -> np.
     return out
 
 
+def _trim_boundary_silence(y: np.ndarray, sr: int) -> tuple[np.ndarray, int]:
+    """Remove leading + trailing silence only; interior untouched.
+
+    Returns (y_trimmed, offset_samples). The offset is added back to the frame
+    times so the untrimmed playback copy still scrub-syncs. Adaptive threshold
+    (see the TRIM_* tunables): a frame counts as signal if its RMS is more than
+    TRIM_MARGIN_DB above the clip's own noise floor, but the threshold is capped
+    so it never rises within TRIM_MIN_SNR_DB of the peak — real signal is never
+    trimmed even when a loud transient inflates the peak. No-ops (returns y, 0)
+    when nothing is clearly below signal or the result would be degenerate.
+    """
+    if y.size < N_FFT:
+        return y, 0
+    rms = librosa.feature.rms(y=y, frame_length=N_FFT, hop_length=HOP_LENGTH)[0]
+    if rms.size == 0:
+        return y, 0
+    rms_db = librosa.amplitude_to_db(rms, ref=np.max)  # 0 dB at the peak frame
+    floor_db = float(np.percentile(rms_db, TRIM_FLOOR_PCT))
+    thresh_db = min(floor_db + TRIM_MARGIN_DB, -TRIM_MIN_SNR_DB)
+    signal = rms_db > thresh_db
+    if not signal.any():
+        return y, 0
+    first = max(0, int(np.argmax(signal)) - TRIM_PAD_FRAMES)
+    last = min(len(signal) - 1,
+               len(signal) - 1 - int(np.argmax(signal[::-1])) + TRIM_PAD_FRAMES)
+    start = first * HOP_LENGTH
+    end = min(int(y.size), (last + 1) * HOP_LENGTH + N_FFT)
+    if end - start < 2 * N_FFT:          # would leave too little to analyze
+        return y, 0
+    if start == 0 and end >= y.size:     # nothing to trim
+        return y, 0
+    return y[start:end], start
+
+
 def _to_world(vals: np.ndarray, lo: float, hi: float) -> np.ndarray:
     """Map values in feature-range [lo, hi] into the fixed [-WORLD, WORLD] box,
     clamping out-of-range values to the box edge (never stretch the scale)."""
@@ -149,14 +208,18 @@ def extract_features(path: str, max_points: int = MAX_POINTS) -> list[dict]:
     if y.size == 0:
         return []
 
-    # NOTE: no silence trimming — trimming shrank the frame timeline and
-    # decimated clips with quiet passages (~9 pts/s instead of ~50). Quiet
-    # frames are HELD (below), not dropped, so density stays ~50/s of the full
-    # clip and the trail still never spikes to the origin.
+    # Boundary-only silence trim (Part B): strip leading/trailing room tone so
+    # the trail doesn't open/close with a cluster of near-origin points. Only
+    # the boundaries are cut — interior quiet passages are still HELD (below),
+    # so density stays ~50/s of the *remaining* clip. `trim_offset` is added
+    # back to the frame times so the (untrimmed) playback copy scrub-syncs.
+    y, trim_offset = _trim_boundary_silence(y, sr)
+    if y.size == 0:
+        return []
 
     # --- pitch (fundamental frequency) ---
     f0, voiced_flag, _ = librosa.pyin(
-        y, sr=sr, fmin=FMIN, fmax=FMAX,
+        y, sr=sr, fmin=FMIN, fmax=FMAX, resolution=PYIN_RESOLUTION,
         frame_length=N_FFT, hop_length=HOP_LENGTH,
     )
 
@@ -207,8 +270,11 @@ def extract_features(path: str, max_points: int = MAX_POINTS) -> list[dict]:
     motion = _smooth(motion, SMOOTH_WINDOW)
     amplitude = np.clip(_smooth(amplitude, AMP_SMOOTH_WINDOW), 0.0, 1.0)
 
-    # Full timeline (no trim offset) => ~50 pts/sec, playback scrub lines up.
-    times = librosa.frames_to_samples(np.arange(n), hop_length=HOP_LENGTH) / sr
+    # Frame times carry the trim offset back so they sit on the ORIGINAL
+    # (untrimmed) timeline — the full playback copy still scrub-syncs; the trail
+    # simply has no points during the trimmed-away lead/tail silence.
+    times = (librosa.frames_to_samples(np.arange(n), hop_length=HOP_LENGTH)
+             + trim_offset) / sr
 
     # --- downsample only beyond the 3000-point ceiling (~60 s) ---
     idx = (np.linspace(0, n - 1, max_points).round().astype(int)
@@ -230,21 +296,43 @@ SPEC_MELS = 64        # frequency bins in the spectrogram strip
 SPEC_MAX_COLS = 256   # cap time columns so the JSON stays small
 
 
+# Frequencies (Hz) labelled on the spectrogram's vertical axis. Only those below
+# the Nyquist for the current sample rate are emitted. The mel→position math is
+# done here (librosa side) so the frontend needs no mel formula.
+SPEC_FREQ_TICKS_HZ = (250, 500, 1000, 2000, 4000, 8000)
+
+
+def _mel_tick_positions(fmax: float) -> list[dict]:
+    """For each labelled frequency < fmax, its fractional position (0=low/bottom,
+    1=high/top) along the mel axis the spectrogram uses (fmin=0, Slaney mel)."""
+    mel_hi = float(librosa.hz_to_mel(fmax, htk=False))
+    ticks = []
+    for hz in SPEC_FREQ_TICKS_HZ:
+        if hz >= fmax:
+            continue
+        pos = float(librosa.hz_to_mel(hz, htk=False)) / mel_hi if mel_hi > 0 else 0.0
+        label = f"{hz // 1000}k" if hz >= 1000 else str(hz)
+        ticks.append({"hz": int(hz), "pos": round(pos, 4), "label": label})
+    return ticks
+
+
 def compute_spectrogram(path: str) -> dict:
     """Compact mel-spectrogram for the 2D strip.
 
-    Returns {"bins", "cols", "data"} where `data` is a flat, column-major list
-    of ints 0..255 (length bins*cols), each column low→high frequency. Computed
-    server-side (deterministic) and carried inside the feature JSON so the
-    frontend needs no audio decoding and no extra endpoint/file.
+    Returns {"bins", "cols", "data", "freq_ticks"} where `data` is a flat,
+    column-major list of ints 0..255 (length bins*cols), each column low→high
+    frequency, and `freq_ticks` is a list of {hz, pos, label} for the Hz axis
+    (pos 0..1, low→high). Computed server-side (deterministic) and carried inside
+    the feature JSON so the frontend needs no audio decoding and no extra file.
     """
     y, sr = _load_audio(path)
     if y.size == 0:
-        return {"bins": 0, "cols": 0, "data": []}
+        return {"bins": 0, "cols": 0, "data": [], "freq_ticks": []}
 
+    fmax = sr / 2
     S = librosa.feature.melspectrogram(
         y=y, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH,
-        n_mels=SPEC_MELS, fmax=sr / 2,
+        n_mels=SPEC_MELS, fmax=fmax,
     )
     S_db = librosa.power_to_db(S, ref=np.max)  # ~ -80..0 dB
 
@@ -263,7 +351,8 @@ def compute_spectrogram(path: str) -> dict:
 
     # Column-major flat list (each column = SPEC_MELS bins, low→high).
     data = q.T.reshape(-1).tolist()
-    return {"bins": int(SPEC_MELS), "cols": int(cols), "data": data}
+    return {"bins": int(SPEC_MELS), "cols": int(cols), "data": data,
+            "freq_ticks": _mel_tick_positions(fmax)}
 
 
 def _self_check(path: str) -> int:
@@ -281,11 +370,15 @@ def _self_check(path: str) -> int:
         return (min(v), max(v), sum(v) / len(v))
 
     dur = librosa.get_duration(path=path)
-    pts_per_sec = len(feats) / dur if dur > 0 else 0.0
+    # Density is measured over the ANALYZED span (t[0]..t[-1]) not the full file,
+    # since boundary silence is now trimmed away (Part B) — dividing by the full
+    # duration would understate density for a clip with leading/trailing silence.
+    span = (feats[-1]["t"] - feats[0]["t"]) if len(feats) > 1 else dur
+    pts_per_sec = len(feats) / span if span > 0 else 0.0
 
     print(f"file: {path}")
-    print(f"duration: {dur:.3f} s")
-    print(f"point count: {len(feats)}  ({pts_per_sec:.1f} pts/sec, cap {MAX_POINTS})")
+    print(f"duration: {dur:.3f} s (analyzed span {span:.3f} s after boundary trim)")
+    print(f"point count: {len(feats)}  ({pts_per_sec:.1f} pts/sec over span, cap {MAX_POINTS})")
     for name in ("t", "pitch", "timbre", "motion", "amplitude"):
         mn, mx, mean = stats(name)
         print(f"  {name:9s} min={mn:10.4f}  max={mx:10.4f}  mean={mean:10.4f}")

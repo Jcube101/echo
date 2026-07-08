@@ -81,9 +81,9 @@ export default function PlaybackBar({ audioUrl, duration, spectrogram, playheadS
         </span>
       </div>
 
-      {/* Spectrogram strip below the transport */}
-      <div className="mt-2 h-24 rounded overflow-hidden bg-black/40">
-        <Spectrogram spectrogram={spectrogram} progress={progress} />
+      {/* Spectrogram strip below the transport (owns its own axes + panel) */}
+      <div className="mt-2">
+        <Spectrogram spectrogram={spectrogram} progress={progress} duration={dur} />
       </div>
 
       {audioUrl && (

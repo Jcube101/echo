@@ -29,36 +29,56 @@ that call Echo's `/upload` as an ordinary client.
    duration (≤60 s), then the same pipeline. The mic is acquired only for the
    recording window and released immediately — never held in the background.
 
+Plus a built-in **sample library** (not user input): a small curated set of
+example clips shipped with the app so someone with no sound to hand can still
+see the visualization. Details under *Sample library* below.
+
 ---
 
 ## Feature-extraction spec
 
-Given an audio file, produce a JSON array of per-frame feature points:
+Given an audio file, produce a JSON array of per-frame feature points. The
+three spatial features are stored as **fixed-scale world coordinates in
+[-3, 3]** (not raw units), so every clip is directly comparable across the
+gallery — a high bird sits high on the pitch axis in *every* clip, with no
+per-clip normalization. The full transform/clamp design is in `LEARNINGS.md`.
 
 ```json
 [
-  { "t": 0.00, "pitch": 220.5, "timbre": 1.2, "motion": 0.3, "amplitude": 0.60 },
-  { "t": 0.05, "pitch": 224.1, "timbre": 1.3, "motion": 0.4, "amplitude": 0.65 }
+  { "t": 0.00, "pitch": -0.97, "timbre": 0.42, "motion": -1.80, "amplitude": 0.60 },
+  { "t": 0.02, "pitch": -0.95, "timbre": 0.51, "motion": -0.10, "amplitude": 0.65 }
 ]
 ```
 
 | Field       | Meaning | How |
 |-------------|---------|-----|
-| `t`         | Frame time (seconds) | frame index × hop |
-| `pitch`     | Fundamental frequency (Hz) | `librosa.pyin`; unvoiced frames **carry forward** the last voiced pitch (keeps the trail continuous) rather than nulling |
-| `timbre`    | Scalar timbre descriptor | spectral centroid normalized, or MFCC(13)→PCA scalar — whichever is simpler to implement correctly; the choice + why is documented in `LEARNINGS.md` |
-| `motion`    | Rate of spectral change | onset-strength envelope, or frame-to-frame RMS delta — one, documented in `LEARNINGS.md` |
-| `amplitude` | Loudness, normalized 0–1 | RMS energy per frame, normalized. Drives point size/color **only** — not a spatial axis |
+| `t`         | Frame time (seconds) | frame index × hop, on the **original** timeline (boundary-trim offset added back so playback scrub-syncs) |
+| `pitch`     | Fundamental frequency → world coord | `librosa.pyin` (fmin/fmax 50–4000 Hz, `resolution=0.25` semitone for speed), `log2(Hz)` mapped into [-3, 3]; unvoiced/quiet frames **carry forward** the last voiced value (keeps the trail continuous) rather than nulling |
+| `timbre`    | Spectral centroid → world coord | `log2(centroid/55)` mapped into [-3, 3] (deterministic, no per-clip model fit — rationale in `LEARNINGS.md`) |
+| `motion`    | Onset-strength → world coord | `log1p(onset_strength)` mapped into [-3, 3] (spectrally aware: steady tone = low, chirp = high) |
+| `amplitude` | Loudness, normalized 0–1 | RMS energy per frame, per-clip normalized. Drives point size/color **only** — not a spatial axis |
 
-- **Frame hop:** target ~20 ms (≈50 fps). A 60 s clip ≈ 3000 points.
+- **Boundary silence trim:** leading/trailing silence is removed (interior
+  untouched) with an adaptive, noise-floor-relative threshold, so the trail
+  doesn't open/close with a cluster of near-origin points. Tunables in
+  `extraction.py` (`TRIM_*`).
+- **Frame hop:** ~20 ms (≈50 fps) → ~50 points/sec of the *analyzed* (post-trim)
+  span. A 60 s clip ≈ 3000 points.
 - **Point cap:** the API downsamples so the frontend never receives more than
   a few thousand points (cap: **3000**).
+- **Speed:** `pyin` dominates extraction; at `resolution=0.25` a 60 s clip
+  extracts in ~8.5 s on the Pi (was ~37 s at the default 0.1). See the
+  Cloudflare edge-timeout constraint in `LEARNINGS.md`.
 - Extraction is a **standalone, testable function first**, verified on a real
   sample clip before any API/frontend wiring.
 
-**Extraction quality gates (Phase 1 self-check):** pitch within 20–4000 Hz,
-amplitude within 0–1, zero NaN/Inf anywhere, point count consistent with the
-~20 ms hop for the clip length.
+Alongside the feature array, extraction also produces a compact mel-
+**spectrogram** (`{bins, cols, data, freq_ticks}`) carried in the same clip
+JSON; `freq_ticks` gives Hz-axis label positions for the frontend.
+
+**Extraction quality gates (self-check):** pitch/timbre/motion within the
+[-3, 3] world box, amplitude within 0–1, zero NaN/Inf anywhere, density ~50
+pts/sec over the analyzed span (unless capped at 3000).
 
 ---
 
@@ -71,6 +91,9 @@ amplitude within 0–1, zero NaN/Inf anywhere, point count consistent with the
 | GET    | `/history`      | List of `{id, created_at, source_type, duration_s}`, newest first. |
 | GET    | `/history/{id}` | Full feature JSON + playback audio URL for one clip. |
 | GET    | `/audio/{file}` | Serves the transcoded playback file. |
+| GET    | `/samples`      | Curated sample library: list with attribution + metadata. |
+| GET    | `/samples/{id}` | Full feature JSON + audio URL for one sample. |
+| GET    | `/samples/audio/{file}` | Serves a sample's playback file. |
 
 **Schema** — `clips(id, created_at, source_type, duration_s, feature_path, audio_path)`.
 Metadata + file paths only. **Audio blobs are never stored in the DB**
@@ -83,6 +106,18 @@ the oldest entry's DB row **and** its files (audio + features) are deleted.
 and then **discarded** — only a small transcoded playback copy (opus/mp3) is
 kept. This protects the SD card.
 
+## Sample library
+
+A permanent, curated store under `samples/` (served by the `/samples*`
+endpoints), completely separate from the `clips` table: samples are **never**
+DB rows, so the 50-entry retention cleanup can never evict them. One clip per
+species (Asian Koel, Common Myna, Rose-ringed Parakeet), sourced from
+`test-fixtures/xeno-canto/` and committed as product assets. Because the app
+serves these CC BY-NC-SA recordings publicly, each sample's **attribution
+(species, recordist, license + URL, Xeno-canto source link) is shown in the
+UI**, not just the repo manifest. Seeded/regenerated by
+`verification/seed_samples.py`.
+
 ---
 
 ## Frontend (locked: React 18 + Vite 6 + Tailwind + react-three-fiber)
@@ -94,8 +129,12 @@ kept. This protects the SD card.
 - Pi capture button + duration selector calling `/capture`.
 - Playback scrubber synced to the trail (the current point highlights as
   playback advances).
-- 2D spectrogram strip below the 3D view.
+- 2D spectrogram strip below the 3D view, with a **log/mel frequency axis
+  (Hz)** and a **time axis** (aligned to the scrubber), scaled crisply to fill
+  its container at any viewport width.
 - History gallery listing past clips, click to reload via `/history/{id}`.
+- “🐦 Samples” drawer listing the curated sample library (distinct from the
+  personal History gallery), each card showing its attribution.
 
 Served in production by FastAPI `StaticFiles` from `frontend/dist`, mounted
 **last**, same origin — no CORS, no `credentials: 'include'`.

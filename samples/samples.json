@@ -1,0 +1,41 @@
+[
+  {
+    "id": "asian-koel",
+    "species": "Asian Koel",
+    "sci_name": "Eudynamys scolopaceus",
+    "recordist": "Albert Noorlander",
+    "license": "CC BY-NC-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    "source_url": "https://xeno-canto.org/1136884",
+    "xc_id": "1136884",
+    "duration_s": 20.56,
+    "audio_file": "asian-koel.opus",
+    "feature_file": "asian-koel.json"
+  },
+  {
+    "id": "common-myna",
+    "species": "Common Myna",
+    "sci_name": "Acridotheres tristis",
+    "recordist": "David Darrell-Lambert",
+    "license": "CC BY-NC-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    "source_url": "https://xeno-canto.org/1151970",
+    "xc_id": "1151970",
+    "duration_s": 14.495,
+    "audio_file": "common-myna.opus",
+    "feature_file": "common-myna.json"
+  },
+  {
+    "id": "rose-ringed-parakeet",
+    "species": "Rose-ringed Parakeet",
+    "sci_name": "Psittacula krameri",
+    "recordist": "Arjun Dutta",
+    "license": "CC BY-NC-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    "source_url": "https://xeno-canto.org/1153127",
+    "xc_id": "1153127",
+    "duration_s": 15.766,
+    "audio_file": "rose-ringed-parakeet.opus",
+    "feature_file": "rose-ringed-parakeet.json"
+  }
+]

@@ -22,6 +22,19 @@ frontend/dist/
 *.ogg
 *.webm
 
+# Sample library (Part D) is a committed product asset (curated example clips
+# served by the app), NOT user data — keep it tracked despite the audio ignores.
+!/samples/audio/*.opus
+
+# Dev test fixtures — audio files are large and re-fetchable from Xeno-canto,
+# so they stay out of git. The attribution MANIFEST.md must survive, though.
+# (git can't re-include a file under a fully-ignored dir, so ignore contents
+# and explicitly un-ignore each parent plus the manifest.)
+/test-fixtures/*
+!/test-fixtures/xeno-canto/
+/test-fixtures/xeno-canto/*
+!/test-fixtures/xeno-canto/MANIFEST.md
+
 # Overnight verification artifacts (screenshots/logs live on the Pi only;
 # VERIFICATION_LOG.md in the repo root IS committed)
 verification/

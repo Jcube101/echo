@@ -41,3 +41,16 @@ export async function getClip(id) {
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
+
+// Curated sample library (permanent, separate from personal history).
+export async function getSamples() {
+  const res = await fetch('/samples')
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function getSample(id) {
+  const res = await fetch(`/samples/${id}`)
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}

@@ -7,6 +7,52 @@ Newest at the bottom of each section.
 
 ## Decisions with rationale
 
+### Session 5 — speed, boundary trim, spectrogram axes, sample library (2026-07-08)
+
+**Part A — pyin speed (the real "Failed to fetch" fix).** `librosa.pyin` is ~99%
+of extraction time and its cost scales with the pitch-bin count. `PYIN_RESOLUTION
+= 0.25` (25 cents, vs librosa's default 0.1) cut a 60 s clip's pyin from **37 s
+→ 6.5 s** (full extract 8.5 s) for only ~6 cents mean / 15 cents p95 pitch shift
+— imperceptible, invisible in the viz. `0.5` was too coarse (octave errors).
+Single-threaded tuning alone beat the 15 s target, so the multiprocessing/
+chunking lever was NOT built. The earlier LEARNINGS note (~24 s for a 5 s clip)
+was ~5× my isolated numbers — the Pi was clearly loaded then; budget for that
+variance. **Timeout chain:** uvicorn has no request-processing timeout (only
+idle keep-alive); cloudflared has none per-service; the real ceiling is
+Cloudflare's edge ~100 s (HTTP 524) on the free plan — not configurable, so the
+fix is to stay far under it, not to reconfigure.
+
+**Part B — boundary-only silence trim, adaptive (`extraction.py`).** Reinstated
+leading/trailing trim (interior HELD, never cut) with an ADAPTIVE threshold:
+signal must exceed the clip's own noise floor (10th-pct RMS) by `TRIM_MARGIN_DB
+= 8`, capped so it never rises within `TRIM_MIN_SNR_DB = 25` of the peak. The cap
+is the whole point — the old `top_db=30` failure was a loud transient inflating
+the peak so boundary signal >30 dB below it got eaten; a floor-relative threshold
+with an SNR cap keeps real signal even then. Frame times get `trim_offset` added
+back so the untrimmed opus still scrub-syncs (trail simply has no points during
+the trimmed silence). Tunables: `TRIM_FLOOR_PCT/MARGIN_DB/MIN_SNR_DB/PAD_FRAMES`.
+Regression clip `25bd6d1c` is genuinely 1.55 s digital silence + 1.24 s call →
+correctly 141→64 frames (all real signal kept); its old 141 count WAS the origin
+cluster. Self-check density now measured over the analyzed span, not file length.
+
+**Part C — spectrogram axes + crisp scaling (`Spectrogram.jsx`).** Offscreen
+native image → bilinear `drawImage` onto a ResizeObserver-sized canvas (× dpr≤2)
+= fills any width, no pixelation (dropped `image-rendering: pixelated`). Hz axis
+positions come from the backend: `compute_spectrogram` now returns `freq_ticks`
+(`_mel_tick_positions`, Slaney mel) so the frontend needs no mel math. Time axis
+reuses the linear scrubber scale. **Feature-JSON schema grew a `freq_ticks` key
+in the spectrogram dict** — old clips without it still render (frontend defaults
+to []); re-migrate to populate.
+
+**Part D — sample library = static store, NOT a clips-table flag.** `samples/`
+(audio/ + features/ + samples.json) is served by dedicated `/samples*` endpoints
+and never enters the `clips` table, so retention can't evict it *by construction*
+(cleaner than a "don't-evict" flag in the retention query). Seeded by
+`verification/seed_samples.py`; attribution parsed from the fixtures MANIFEST.md.
+Committed to git as product assets (gitignore negation `!/samples/audio/*.opus`).
+Public serving of CC BY-NC-SA clips → attribution is shown in the UI (drawer
+cards + an in-view credit line), not just the repo manifest.
+
 ### Fixed world scale, density fix, smoothing, visual overhaul (2026-07-08, post-launch)
 
 **Part A — density bug root cause.** The `librosa.effects.trim` added the prior
@@ -117,13 +163,28 @@ continuous line instead of teleporting to 0 Hz on every silent/noisy frame.
 
 ## Gotchas & platform quirks
 
-### pyin is slow on the Pi (Phase 1)
-`librosa.pyin` dominates extraction time: ~24 s of CPU for a 5 s clip on the Pi.
-A full 60 s clip could take several minutes. Acceptable for v1's on-demand,
-one-clip-at-a-time usage, but it means `/upload` and `/capture` are
-**long-running requests** — the frontend must show a clear processing state and
-not time out. Possible future optimization: lower `pyin` resolution, or swap to
-`librosa.yin` (faster, less robust) if latency ever pinches. Noted, not fixed.
+### pyin is slow on the Pi (Phase 1 → FIXED session 5)
+`librosa.pyin` dominates extraction time (~99%). It was the "Failed to fetch"
+cause on longer clips. **Fixed in session 5 by `PYIN_RESOLUTION = 0.25`** (25
+cents vs the default 0.1): a 60 s clip's extraction dropped from ~37 s to ~8.5 s
+for only ~6 cents mean pitch shift. `/upload` and `/capture` are still
+long-running requests (single-digit seconds), so the frontend keeps a clear
+processing state — but they now clear well inside every timeout in the chain.
+The old measurement (~24 s for a 5 s clip) was the Pi under heavy load; budget
+for that variance. Further headroom if ever needed: chunk pitch detection across
+the Pi's 4 cores (measured unnecessary at 0.25).
+
+### Cloudflare Tunnel has a hard ~100 s edge timeout (constraint to remember)
+Nothing in Echo's request chain (uvicorn, cloudflared) imposes a request-
+processing timeout — uvicorn's `--timeout-keep-alive` is idle-only, and the
+`echo` ingress has no per-service timeout. **But Cloudflare's edge enforces a
+~100 s origin-response limit (HTTP 524) on the free plan, and it is not
+configurable.** Any synchronous endpoint served through `*.job-joseph.com` must
+respond within that window or the browser sees a dropped connection
+("Failed to fetch"). This is *the* ceiling that bounds Echo's synchronous
+`/upload` + `/capture`; keep extraction far under it (Part A does — worst case
+tens of seconds). If a future feature genuinely needs longer, it must move to an
+async job-status pattern, not a config tweak.
 
 ---
 
