@@ -12,9 +12,14 @@ any other directory or repository on this machine — not dev-meta, not hunter,
 not photorank, not any other project folder. If a pattern from another
 project seems needed, ask Job instead of going looking for it.
 
-Job-maintained files — **never modify these:**
-- `ROADMAP.md` — milestone order and future plans (read it, don't touch it)
-- `CLAUDE.md` — this file
+`CLAUDE.md` — Job-maintained, **never modify this file**.
+
+`ROADMAP.md` — a **living document**, jointly maintained by Job and Claude
+Code sessions. Keep milestone status (✅ Shipped / 🚧 In progress /
+📋 Planned / 💡 Idea) current as work starts and ships, and add new
+milestones or decisions surfaced during a session. Add and update — don't
+reorder, delete, or rewrite Job's existing decisions and context without
+being asked.
 
 ---
 

@@ -1,5 +1,9 @@
 # Echo — Roadmap
 
+**Living document** — jointly maintained by Job and Claude Code sessions.
+Update status inline as work starts and ships; log notable changes in the
+Changelog at the bottom. Last updated: 2026-07-18.
+
 Echo turns an audio clip into an interactive 3D trail through
 pitch/timbre/motion space. This roadmap is the build order: each milestone is
 one focused Claude Code session, shippable on its own, with a working state at
@@ -10,11 +14,28 @@ listens in the background, never holds the mic, never runs continuous
 processing. That property is what keeps it compatible with everything else on
 this Pi.
 
+### Status legend
+| Symbol | Meaning |
+|---|---|
+| ✅ | Shipped — live in the deployed app, verified |
+| 🚧 | In progress — partially built, work remaining |
+| 📋 | Planned — scoped/decided, not yet started |
+| 💡 | Idea — under consideration, no commitment |
+
+### At a glance
+| Version | Status |
+|---|---|
+| v1 — Core Product (M1–M9) | ✅ Shipped |
+| v1.x — Polish | 🚧 In progress (1 of 4 items started) |
+| v1.5 — Extended Spectral Analysis Panel | 📋 Planned |
+| v2 — Avian Visitors integration | 📋 Planned |
+| Deferred / Ideas | 💡 Idea |
+
 ---
 
-## v1 — Core Product
+## v1 — Core Product — ✅ Shipped
 
-### M1. Feature extraction engine
+### M1. Feature extraction engine — ✅ Shipped
 The heart of the project — everything else is plumbing around it.
 - Standalone Python module: audio file in → per-frame feature JSON out
   (`t`, `pitch`, `timbre`, `motion`, `amplitude`) per SPEC.md
@@ -22,7 +43,7 @@ The heart of the project — everything else is plumbing around it.
   no NaNs, ~20ms hop, point count capped at a few thousand
 - **Done when:** running the module on a test clip prints valid JSON
 
-### M2. API + storage
+### M2. API + storage — ✅ Shipped
 - FastAPI: `POST /upload`, `GET /history`, `GET /history/{id}`
 - SQLite metadata only (file paths, never audio blobs)
 - 20MB / 60s limits enforced server-side
@@ -30,40 +51,40 @@ The heart of the project — everything else is plumbing around it.
 - 50-entry retention with automatic cleanup
 - **Done when:** all endpoints verified with curl, cleanup rule demonstrated
 
-### M3. 3D visualization
+### M3. 3D visualization — ✅ Shipped
 - React + Vite + react-three-fiber scene rendering a static feature JSON
 - Trail on pitch/timbre/motion axes, orbit controls, amplitude drives
   point size/color
 - **Done when:** the M1 sample clip renders as a navigable 3D trail
 
-### M4. Input flows
+### M4. Input flows — ✅ Shipped
 - File upload UI (drag/drop + picker)
 - In-browser recording via MediaRecorder — the phone-at-the-park flow —
   posting to the same `/upload` endpoint
 - **Done when:** a clip recorded on the phone renders end-to-end
 
-### M5. Pi mic capture
+### M5. Pi mic capture — ✅ Shipped
 - `POST /capture` triggers `~/bin/rec` for a selected duration (max 60s)
 - Mic acquired for the recording window only, released immediately
 - **Done when:** a Pi-captured clip renders end-to-end
 
-### M6. Playback + spectrogram
+### M6. Playback + spectrogram — ✅ Shipped
 - Playback scrubber synced to the 3D trail (current point highlights)
 - 2D spectrogram strip below the 3D view
 - **Done when:** scrubbing moves the highlight through the trail
 
-### M7. History gallery
+### M7. History gallery — ✅ Shipped
 - Browsable list of past clips, click to reload any visualization
 - **Done when:** gallery shows multiple entries and reload works
 
-### M8. Deployment
+### M8. Deployment — ✅ Shipped
 - systemd service (`echo.service`), port 8014
 - `echo.job-joseph.com` via Cloudflare Tunnel ingress rule
 - Register port in dev-meta PORTS.md (done by Job, not CC)
 - **Done when:** `curl https://echo.job-joseph.com/history` returns real data
   from outside the LAN
 
-### M9. Sample library
+### M9. Sample library — ✅ Shipped
 Shipped in Session 5, after initial v1 launch — added so someone with no
 sound to hand can still see the visualization.
 - Curated store under `samples/` (audio + features + attribution), served by
@@ -78,18 +99,20 @@ sound to hand can still see the visualization.
 
 ---
 
-## v1.x — Polish (after real use, only if wanted)
+## v1.x — Polish (after real use, only if wanted) — 🚧 In progress
 
-- PWA manifest + install-to-home-screen (the park use case benefits most —
-  follow the stack's standard vite-plugin-pwa pattern)
-- iOS Safari MediaRecorder hardening if testing surfaces issues
-- Visual tuning to better match the reference reel (trail fade, point
-  glow, camera presets)
-- Shareable links to a specific clip's visualization
+- 📋 **Planned** — PWA manifest + install-to-home-screen (the park use case
+  benefits most — follow the stack's standard vite-plugin-pwa pattern)
+- 📋 **Planned** — iOS Safari MediaRecorder hardening if testing surfaces
+  issues (untested on a real device — see `LEARNINGS.md` follow-ups)
+- 🚧 **In progress** — Visual tuning to better match the reference reel.
+  Point glow + additive-blend teal styling shipped in the post-launch visual
+  overhaul; trail time-fade and camera presets are still open
+- 📋 **Planned** — Shareable links to a specific clip's visualization
 
 ---
 
-## v1.5 — Extended Spectral Analysis Panel (future)
+## v1.5 — Extended Spectral Analysis Panel (future) — 📋 Planned
 
 Inspired by a more advanced reference visualization (a multi-panel bird-audio
 analysis tool, screenshot saved by Job) that extracts a much richer feature
@@ -143,7 +166,7 @@ trail concept, just on richer axes.
 
 ---
 
-## v2 — Avian Visitors as a Client of Echo (future)
+## v2 — Avian Visitors as a Client of Echo (future) — 📋 Planned
 
 **Reaffirmed decision:** species identification (BirdNET — Cornell's
 acoustic classifier) stays entirely inside Avian Visitors. Echo remains
@@ -202,7 +225,7 @@ proves flaky in practice.
 
 ---
 
-## Deferred / Ideas (no commitment)
+## Deferred / Ideas (no commitment) — 💡 Idea
 
 - Live transcription overlay — only if a lightweight local model proves
   feasible on Pi CPU
@@ -212,3 +235,14 @@ proves flaky in practice.
 - Ollama-generated plain-language description of a clip's acoustic character
 - NVMe migration for larger history retention (Phase 2 hardware, only if
   the 50-entry cap actually pinches)
+
+---
+
+## Changelog
+
+- **2026-07-18** — Converted to a living document: added the status legend,
+  at-a-glance table, and per-milestone/per-item status (✅/🚧/📋/💡)
+  throughout. `ROADMAP.md` maintenance is now shared between Job and Claude
+  Code sessions (was Job-only) — see `CLAUDE.md`. Also added M9 (sample
+  library, retroactively — shipped in Session 5) and the v1.5 section /
+  expanded v2 context that had been missing.
