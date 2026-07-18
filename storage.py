@@ -18,6 +18,7 @@ Raw uploaded/recorded audio is NEVER kept beyond the small playback copy
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -118,8 +119,12 @@ def process_audio(raw_path: Path, source_type: str) -> dict:
                 id=clip_id,
                 source_type=source_type,
                 duration_s=eff_duration,
-                feature_path=str(feat_out.relative_to(ROOT)),
-                audio_path=str(audio_out.relative_to(ROOT)),
+                # os.path.relpath (not Path.relative_to) so this still works
+                # when DATA_DIR has been redirected outside ROOT (ECHO_DATA_DIR,
+                # test-enablement seam) — it emits a ../-relative path instead
+                # of raising, and ROOT / that path still resolves correctly.
+                feature_path=os.path.relpath(feat_out, ROOT),
+                audio_path=os.path.relpath(audio_out, ROOT),
             )
             session.add(clip)
             session.commit()

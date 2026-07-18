@@ -5,21 +5,8 @@ import PlaybackBar from './components/PlaybackBar.jsx'
 import Gallery from './components/Gallery.jsx'
 import Samples from './components/Samples.jsx'
 import { uploadAudio } from './lib/api.js'
+import { indexForTime } from './lib/nearestIndex.js'
 import sample from './data/sample.json'
-
-// Nearest feature index for a given playback time (features are t-ordered).
-function indexForTime(features, t) {
-  if (!features.length) return null
-  let lo = 0
-  let hi = features.length - 1
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1
-    if (features[mid].t < t) lo = mid + 1
-    else hi = mid
-  }
-  if (lo > 0 && Math.abs(features[lo - 1].t - t) < Math.abs(features[lo].t - t)) return lo - 1
-  return lo
-}
 
 export default function App() {
   const [features, setFeatures] = useState(sample)
