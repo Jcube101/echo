@@ -89,7 +89,75 @@ sound to hand can still see the visualization.
 
 ---
 
+## v1.5 — Extended Spectral Analysis Panel (future)
+
+Inspired by a more advanced reference visualization (a multi-panel bird-audio
+analysis tool, screenshot saved by Job) that extracts a much richer feature
+set than Echo's current pitch/timbre/motion. Not a replacement for the
+existing 3D trail — a **second, additional view** alongside it.
+
+### New features to add (all of them, decided)
+Six additional engineered audio descriptors, on top of what Echo already
+computes:
+
+- **Spectral Spread** — how concentrated vs. dispersed energy is around the
+  centroid
+- **Spectral Crest** — peak-to-average ratio (tonal peakiness vs. flat noise)
+- **Spectral Contrast** — peak/valley difference across sub-bands (separates
+  tonal calls from noisy/breathy ones)
+- **Spectral Slope** — spectral tilt, low-to-high frequency energy decline
+- **Spectral Flatness** — standard feature (`librosa.feature.spectral_flatness`)
+  — noise-like vs. tonal
+- **Harmonic/Noise Ratio (HNR)** — periodic vs. noise energy ratio
+- **Tonality** — likely a composite score derived from flatness/HNR; needs
+  its own definition when this is scoped in detail, no standard single
+  librosa function for it
+
+Note what's already covered under different names — no need to reinvent:
+Echo's **timbre** (log2 spectral centroid) *is* Spectral Centroid; Echo's
+**motion** (onset strength) is conceptually near-identical to **Spectral
+Flux** (flux is the standard basis for onset detection). Confirm during
+scoping whether to keep the existing names or rename to match convention.
+
+### How this shows up in the app (decided)
+A **second panel/view alongside the existing 3D trail** — not a replacement
+of pitch/timbre/motion, and not merged into the same 3D scene. Likely
+something like: the current 3D trail stays as the primary view, plus a new
+panel (a second 3D scene on different axes, and/or a 2D multi-line
+time-series panel showing several of these features plotted against time,
+similar to how the spectrogram strip already sits below the main view).
+
+### Resolved — it's a time trail
+Confirmed by watching the source video: the connecting lines are a time
+trail, same paradigm as Echo's existing trail (the line visibly "bounces"
+across time as the bird sings) — not a similarity/nearest-neighbor graph.
+No new interaction model needed; this panel is the same time-sequential
+trail concept, just on richer axes.
+
+### Also worth deciding when scoped
+- Point-level hover/tap readouts showing exact numeric values — the
+  reference has this, Echo currently has none
+- Whether any of these six features affect the fixed-world-scale
+  normalization approach (Part B/session-5 decisions) or need their own
+  independent scale
+
+---
+
 ## v2 — Avian Visitors as a Client of Echo (future)
+
+**Reaffirmed decision:** species identification (BirdNET — Cornell's
+acoustic classifier) stays entirely inside Avian Visitors. Echo remains
+bird-agnostic and never runs a classification model itself; it only ever
+receives a species label as metadata from Avian via the bridge below. This
+was explicitly reconsidered (not just defaulted to) when Job asked about
+adding recognition directly to Echo, and confirmed as the right split.
+
+**Correction worth keeping on record:** there's no standalone "Cornell API
+key" that identifies a species from audio. BirdNET is a model you run
+locally against the clip, not an API call — that's the actual work Avian
+Visitors does. The eBird API key is a separate, unrelated thing: it only
+filters species lists by region (e.g. Karnataka), it doesn't listen to
+anything.
 
 Echo and Avian Visitors are **independent projects with independent goals**:
 
