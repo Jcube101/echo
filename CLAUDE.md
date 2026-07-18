@@ -15,6 +15,11 @@ any other directory or repository on this machine — not dev-meta, not hunter,
 not photorank, not any other project folder. If a pattern from another
 project seems needed, ask Job instead of going looking for it.
 
+**Process hygiene on the shared Pi:** never kill processes with a broad/
+generic pattern (e.g. `pkill -f "node.*vite"`) — a session once did this and
+took down an unrelated project's dev server. Kill by exact PID or a
+project-scoped path (`pkill -f "projects/echo/frontend"`) only.
+
 `CLAUDE.md` — this file, jointly maintained by Job and Claude Code sessions.
 Locked Decisions and standing guardrails encode Job's calls — add new
 operational rules, sudo scope, or guardrails discovered during a session,
@@ -61,6 +66,7 @@ section is explicitly in scope for the session.
 | Max clip duration | 60 seconds (all input paths) |
 | Stored audio | Raw upload processed then discarded; only a small transcoded playback copy (opus/mp3) is kept |
 | History retention | Last 50 entries; oldest entry's files + DB row deleted on each save beyond 50 |
+| Sample library exception | `samples/audio/*.opus` are a deliberate, permanent exception to the discard rule above — committed to git as product assets, never a `clips` DB row, never subject to the 50-entry retention rule |
 
 The root `package.json` exists solely for Playwright verification tooling —
 the app frontend lives in `frontend/` with its own `package.json`.
@@ -102,6 +108,9 @@ sudo -n systemctl restart cloudflared
 
 Anything outside this list will prompt for a password and hang an unattended
 session — don't attempt other sudo commands; report the need instead.
+Notably, `status` is **not** in the allowlist: `sudo -n systemctl status
+echo` will hang on a password prompt. Use plain `systemctl status echo`
+(no sudo) for read-only inspection instead.
 
 System-file editing pattern: write to `/tmp/` first, then `sudo -n cp` into
 place. Never `sudo nano`, never `sudo tee` for these files.
@@ -118,6 +127,15 @@ When adding the `echo.job-joseph.com` ingress rule:
 5. Restart: `sudo -n systemctl restart cloudflared`
 6. Record the full before/after config in the session report
 
+**Hard constraint — Cloudflare's ~100s edge timeout:** nothing in the
+request chain (uvicorn, cloudflared) imposes a request-processing timeout,
+but Cloudflare's free-plan edge enforces an unconfigurable ~100s
+origin-response limit (HTTP 524) on `*.job-joseph.com`. Any synchronous
+endpoint served through the tunnel must return well inside that window — if
+a future feature needs longer, it needs an async job-status pattern, not a
+config tweak. (This is why `/upload`/`/capture` extraction speed is tuned
+to stay in single-digit seconds — see `LEARNINGS.md`.)
+
 ---
 
 ## Other Standing Guardrails
@@ -126,7 +144,10 @@ When adding the `echo.job-joseph.com` ingress rule:
 - `StaticFiles` is mounted **last** in `main.py`, after all API routes
 - Pin `pydantic>=2.10.4` and `sqlalchemy>=2.0.51` (Python 3.13 aarch64)
 - Raw uploaded/recorded audio must never persist beyond the transcoded
-  playback copy — no exceptions (SD-card disk constraint)
+  playback copy — no exceptions (SD-card disk constraint). This governs the
+  `/upload` and `/capture` pipelines specifically; it doesn't apply to the
+  curated sample library, which is a separate, permanent, committed asset
+  set (see the Sample library exception row in Locked Decisions)
 - Never touch `PORTS.md` or anything in other repos — report the port used,
   Job registers it himself
 - Session learnings go in `LEARNINGS.md`, not in this file
