@@ -3,6 +3,9 @@
 Operational guide for Claude Code sessions in this repo. These rules are
 binding in every session, not just the initial build.
 
+**Living document** — jointly maintained by Job and Claude Code sessions.
+Last updated: 2026-07-18.
+
 ---
 
 ## Scope Restriction — Read First
@@ -12,7 +15,11 @@ any other directory or repository on this machine — not dev-meta, not hunter,
 not photorank, not any other project folder. If a pattern from another
 project seems needed, ask Job instead of going looking for it.
 
-`CLAUDE.md` — Job-maintained, **never modify this file**.
+`CLAUDE.md` — this file, jointly maintained by Job and Claude Code sessions.
+Locked Decisions and standing guardrails encode Job's calls — add new
+operational rules, sudo scope, or guardrails discovered during a session,
+and keep existing sections accurate, but don't reorder, delete, or override
+Job's existing decisions without being asked.
 
 `ROADMAP.md` — a **living document**, jointly maintained by Job and Claude
 Code sessions. Keep milestone status (✅ Shipped / 🚧 In progress /
