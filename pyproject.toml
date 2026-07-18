@@ -1,0 +1,9 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not hardware and not requires_sudo and not tunnel and not perf'"
+markers = [
+    "hardware: needs the real Pi USB mic via ~/bin/rec — never runs unattended",
+    "requires_sudo: invokes the scoped sudo -n systemctl commands (restarts the LIVE echo service) — never runs unattended",
+    "tunnel: needs network access to https://echo.job-joseph.com — never runs unattended",
+    "perf: wall-clock timing assertions meaningful only on the Pi — flaky elsewhere",
+]

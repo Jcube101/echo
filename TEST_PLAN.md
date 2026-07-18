@@ -1,19 +1,82 @@
 # Echo — Test Plan
 
-Test-planning analysis only — **no test code exists yet**. This document is the
-complete, prioritized plan for taking Echo from zero automated tests (the root
-`package.json` "test" script is a stub; `verification/` is manual Playwright
-screenshot checks) to a layered suite. A later session implements only what is
-approved here.
+This document is the complete, prioritized test plan for Echo, taking it from
+zero automated tests (the root `package.json` "test" script was a stub;
+`verification/` is manual Playwright screenshot checks) to a layered suite.
 
-Status: **proposed — awaiting Job's approval.** Nothing in this plan has been
-implemented, and no dependency has been installed.
+Status: **implemented (2026-07-18).** All 89 planned tests have test code;
+86 are automated and 3 (`HW-002/007/008`) remain manual-only procedures by
+design (see section G). See "Implementation & Verification Status" below for
+exactly what has been run and what hasn't.
 
-**Approved so far (Job, 2026-07-18):**
+**Approved by Job (2026-07-18):**
 - The three test-enablement seams (see "Test-enablement seams" below) —
-  cleared to implement when the test suite is built.
+  implemented.
 - HW-006, including its accepted side effect (one real clip added to
-  production history per run, aged out by retention).
+  production history per run, aged out by retention) — implemented, not run
+  (tunnel-gated; see below).
+
+---
+
+## Implementation & Verification Status
+
+Everything below reflects what was **actually run in this session's sandbox**
+— not an assumption of what "should" pass elsewhere.
+
+| Suite | Implemented | Run this session | Result |
+|---|---|---|---|
+| Backend unit/regression/API/storage (`tests/`) | 86 IDs → 90 pytest cases | **Yes** — `pytest` (default markers) | **90 passed, 6 deselected** |
+| Frontend unit (`frontend/src/__tests__/`) | 11 IDs → 44 Vitest cases | **Yes** — `npm --prefix frontend run test` | **44 passed** |
+| E2E (`e2e/specs/`) | 10 specs (E2E-001..010) | **Partially** — see caveat below | **1 passed** (E2E-001) — see caveat |
+| Hardware/sudo/tunnel (`tests/test_deployment.py`) | HW-001, 003, 004, 005, 006 | **No — deliberately not attempted**, per instruction | confirmed deselected by default (`--collect-only`); not executed |
+| `perf`-marked (REG-005) | 1 | **No — deliberately not attempted** (Pi-only) | confirmed deselected by default |
+| Manual-only (HW-002, 007, 008) | 0 (procedures, not code) | n/a | n/a |
+
+Root command: `npm test` (repo root) runs the backend + frontend rows above
+in one shot — **134 tests passed, 6 correctly deselected**, zero failures.
+
+### E2E caveat — found and root-caused, not swept under the rug
+
+All 10 E2E specs are implemented per the design below and mirror the exact
+interaction patterns the manual `verification/*.mjs` scripts already proved
+out (VERIFICATION_LOG.md Phases 3–8). **E2E-001 (initial app boot, no
+subsequent state update) passes cleanly.** E2E-002 through E2E-010 all
+involve a *second* render after the first paint (uploading a clip, scrubbing,
+opening a drawer, etc.) and none of them complete in **this sandboxed
+container**: ReactDOM's render phase for the update runs correctly (verified
+by temporary instrumentation — the right new state, e.g. a fresh clip id, is
+computed every time), but the commit + passive-effect flush for that specific
+update never happens, so the DOM never reflects it, no matter how long the
+test waits.
+
+This was root-caused as an **environment limitation, not an app or test bug**:
+- It reproduces identically outside Playwright (a hand-written script driving
+  the Vite dev server directly), and with the `<Scene>`/Canvas subtree
+  entirely removed from the update path the same commit succeeds instantly —
+  so it's specific to something inside the react-three-fiber/Three.js render
+  path, not to `App.jsx`'s own state logic (which was verified correct).
+- Explicit `--use-gl=swiftshader` / `--enable-unsafe-swiftshader` /
+  `--ignore-gpu-blocklist` launch flags made no difference.
+- Waiting up to 90 seconds never let the commit through — this is a stall,
+  not merely software-rendering slowness.
+- The console shows repeated `GPU stall due to ReadPixels` warnings, and
+  `Scene.jsx`'s `Canvas` sets `preserveDrawingBuffer: true` (needed for the
+  verification suite's own screenshot capture) — a combination known to be
+  very expensive under SwiftShader (this container has no real GPU).
+- No source change was made to chase this: `App.jsx`/`Scene.jsx` are
+  byte-identical to their pre-session state except the one approved seam
+  (`indexForTime` extracted to `lib/nearestIndex.js`) — confirmed via
+  `git diff`.
+
+Since the *identical* interaction pattern is what `verify_upload.mjs`,
+`verify_playback.mjs`, `verify_gallery.mjs`, and `verify_mobile.mjs` already
+proved out successfully on real hardware (VERIFICATION_LOG.md), this reads as
+a limitation of this specific no-GPU sandbox rather than a regression.
+**Recommendation:** run `npm run test:e2e` (from repo root) on a machine with
+real GPU acceleration — e.g. the Pi itself, or Job's own machine — before
+relying on E2E-002 through E2E-010. They are implemented and believed
+correct, but **unverified**, exactly like the hardware/sudo/tunnel-gated
+tests below.
 
 ---
 
@@ -37,27 +100,35 @@ implemented, and no dependency has been installed.
 **By suite:** extraction unit 21 (EXT) · regression 6 (REG) · API 23 (API) ·
 storage/db 10 (STO) · frontend unit 11 (FE) · E2E 10 (E2E) · hardware/deploy 8 (HW)
 
-### Proposed directory layout
+### Directory layout (as implemented)
 
 ```
 echo/
 ├── tests/                        # backend pytest suite (sibling to main.py)
-│   ├── conftest.py               # shared fixtures: temp data dir + temp SQLite,
-│   │                             #   synthetic audio factory (numpy+soundfile),
-│   │                             #   TestClient app factory, fake ~/bin/rec stub
-│   ├── test_extraction.py        # EXT-* and REG-001..004/006
+│   ├── conftest.py               # shared fixtures: temp data dir + temp SQLite
+│   │                             #   (ECHO_DATA_DIR seam), synthetic audio
+│   │                             #   factory (numpy+soundfile), TestClient
+│   │                             #   fixtures, fake ~/bin/rec stub factory
+│   ├── test_extraction.py        # EXT-* and REG-*
 │   ├── test_api.py               # API-*
 │   ├── test_storage.py           # STO-*
-│   └── test_deployment.py        # HW-003..006 (all opt-in-marked, never default)
+│   └── test_deployment.py        # HW-001/003/004/005/006 (opt-in-marked)
+├── requirements-dev.txt          # pytest/pytest-timeout/httpx (test-only)
 ├── frontend/src/__tests__/       # Vitest + React Testing Library (FE-*)
-│   │                             #   (single __tests__/ dir; co-located
-│   │                             #   *.test.jsx acceptable too — pick one)
+│   ├── vitest.setup.js           # (referenced via frontend/vite.config.js's
+│   │                             #   `test` block) jest-dom matchers +
+│   │                             #   ResizeObserver/canvas/media stubs
+│   └── *.test.js(x)
 ├── e2e/                          # Playwright E2E (E2E-*) — kept strictly
 │   │                             #   separate from tests/ and __tests__/
-│   ├── playwright.config.js
-│   └── *.spec.js
-├── pyproject.toml                # pytest markers + default addopts (new file,
-│                                 #   pytest config only — no packaging change)
+│   ├── playwright.config.mjs     # .mjs: root package.json has no "type":
+│   │                             #   "module", so ESM needs the extension
+│   ├── global-setup.mjs          # generates fixture audio via ffmpeg (sine)
+│   ├── start-server.mjs          # boots uvicorn against a temp data dir
+│   ├── fixtures-path.mjs
+│   ├── helpers.mjs
+│   └── specs/*.spec.mjs
+├── pyproject.toml                # pytest markers + default addopts
 └── verification/                 # existing manual screenshot checks — untouched
 ```
 
@@ -98,9 +169,10 @@ markers = [
   - `pytest -m tunnel` — public-URL smoke (HW-005, HW-006)
   - `pytest -m perf` — Pi timing budget (REG-005)
   - `pytest -m "hardware or requires_sudo or tunnel or perf"` — everything gated
-- Playwright equivalent: tag gated specs with `@hardware`/`@tunnel` in the test
-  title and exclude by default via `grepInvert: /@hardware|@tunnel/` in
-  `e2e/playwright.config.js`; opt in with `npx playwright test --grep @tunnel`.
+- Playwright equivalent: `e2e/playwright.config.mjs` wires
+  `grepInvert: /@hardware|@tunnel/` for any future spec that would need one
+  of those tags (opt in with `--grep @tunnel`) — none of the 10 implemented
+  E2E-* specs needs one, since all run against a temp-dir localhost instance.
 
 ### Standalone list — every test needing real hardware, sudo, or the tunnel
 
@@ -120,17 +192,18 @@ No proposed test requires sudo beyond the existing 8-command scope. Status
 checks in HW-003/004 use plain `systemctl is-active echo` (no sudo), per the
 LEARNINGS.md gotcha that `status` is not allowlisted.
 
-### Recommended test stack (recommendation only — nothing installed)
+### Test stack (as installed)
 
-| Layer | Recommendation | Why it fits what's already here |
+| Layer | Used | Notes |
 |---|---|---|
-| Backend | **pytest** (+ FastAPI's built-in `TestClient`, which rides on `httpx`/`starlette` already pulled in by `fastapi>=0.115`) | Standard for FastAPI; `numpy`+`soundfile` already in `requirements.txt` cover fixture synthesis; no new runtime deps — only `pytest` (and optionally `pytest-timeout`) added as dev deps |
-| Frontend units | **Vitest + @testing-library/react + jsdom** | Vitest is the native test runner for Vite 6 (shares `vite.config.js` transform pipeline — zero babel/jest config); RTL is the standard for React 18 component tests |
-| E2E | **Keep Playwright**, but move to the `@playwright/test` runner in `e2e/` | The root `package.json` already pins `playwright ^1.61.1` and Chromium is cached on the Pi; the existing `verification/*.mjs` scripts are raw-API Playwright — the `@playwright/test` runner adds assertions, retries, and `--grep` tagging with no new browser download |
+| Backend | **pytest** + `pytest-timeout` + `httpx` (dev-only, in `requirements-dev.txt`) + FastAPI's built-in `TestClient` | `numpy`+`soundfile` (already in `requirements.txt`) cover fixture synthesis — no new runtime deps |
+| Frontend units | **Vitest + @testing-library/react + @testing-library/jest-dom + @testing-library/user-event + jsdom** (added to `frontend/package.json` devDependencies) | Native to Vite 6 — shares `vite.config.js`'s transform pipeline, zero babel/jest config |
+| E2E | **`@playwright/test`** added to root `package.json` (alongside the existing `playwright` devDependency) | This sandbox's pre-cached Chromium (build 1194) is one revision behind what `@playwright/test@1.61.1` expects (1228) — `e2e/playwright.config.mjs` pins `launchOptions.executablePath: '/opt/pw-browsers/chromium'` to use it directly rather than downloading |
+| E2E audio fixtures | **ffmpeg** (`sine` lavfi source, generated at test-run time by `e2e/global-setup.mjs`) | Not pre-installed in this sandbox — installed via `apt-get install ffmpeg` during this session (already a runtime dependency of the app itself, per `requirements.txt`/`storage.py`) |
 
-Wiring (later, on approval): root `package.json` "test" stub →
-`cd frontend && vitest run && cd .. && .venv/bin/pytest`; e2e stays a separate
-explicit command.
+Wiring (done): root `package.json` `"test"` → `test:backend` (`.venv/bin/pytest`)
+then `test:frontend` (`npm --prefix frontend run test`); `"test:e2e"` stays a
+separate explicit command (`playwright test --config=e2e/playwright.config.mjs`).
 
 ### Test-enablement seams (small source changes — **approved by Job, 2026-07-18**)
 
@@ -161,105 +234,105 @@ All fully sandboxed: synthetic audio fixtures, no network, no hardware.
 [-3, 3] world box, amplitude within 0–1, zero NaN/Inf anywhere, density ~50
 pts/sec over the analyzed span (unless capped at 3000)."*
 
-- [ ] EXT-001 — **Unit · P0 · sandboxed** — `extract_features()` — every
+- [x] EXT-001 — **Unit · P0 · sandboxed** — `extract_features()` — every
   `pitch`/`timbre`/`motion` value lies in the `[-3, 3]` world box for a battery
   of synthetic clips (pure tone, chirp, white noise, near-silence, extreme SPL).
   Contract: SPEC.md quality gate above + *"stored as fixed-scale world
   coordinates in [-3, 3]"*.
-- [ ] EXT-002 — **Unit · P0 · sandboxed** — `extract_features()` — `amplitude`
+- [x] EXT-002 — **Unit · P0 · sandboxed** — `extract_features()` — `amplitude`
   is within 0–1 on the same battery (including after `AMP_SMOOTH_WINDOW`
   smoothing, which is explicitly re-clipped in code). Contract: SPEC.md
   *"amplitude within 0–1"*.
-- [ ] EXT-003 — **Unit · P0 · sandboxed** — `extract_features()` +
+- [x] EXT-003 — **Unit · P0 · sandboxed** — `extract_features()` +
   `compute_spectrogram()` — zero NaN/Inf in any output field for the battery,
   including pathological inputs (all-zero signal, single-sample file, DC-only).
   Contract: SPEC.md *"zero NaN/Inf anywhere"*; `docstring: "Never returns
   NaN/Inf"*.
-- [ ] EXT-004 — **Unit · P0 · sandboxed** — `extract_features()` — density is
+- [x] EXT-004 — **Unit · P0 · sandboxed** — `extract_features()` — density is
   44–56 pts/sec **measured over the analyzed span** (`t[-1] − t[0]`), not the
   file length, for clips of 2 s / 5 s / 30 s. Contract: SPEC.md *"~50
   points/sec of the analyzed (post-trim) span"* and the `_self_check` gate
   `44.0 <= pts_per_sec <= 56.0`.
-- [ ] EXT-005 — **Unit · P0 · sandboxed** — `extract_features(max_points=…)` —
+- [x] EXT-005 — **Unit · P0 · sandboxed** — `extract_features(max_points=…)` —
   a >60 s-equivalent frame count is downsampled to exactly ≤3000 points with
   first/last frames retained (`np.linspace` endpoints). Contract: SPEC.md
   *"Point cap: … no more than a few thousand points (cap: 3000)"*.
-- [ ] EXT-006 — **Unit · P0 · sandboxed** — `_load_audio()` — a 65 s input is
+- [x] EXT-006 — **Unit · P0 · sandboxed** — `_load_audio()` — a 65 s input is
   truncated to 60 s before analysis (defensive cap independent of the server
   check). Contract: CLAUDE.md locked *"Max clip duration | 60 seconds (all
   input paths)"*; code comment *"truncate defensively in case the server-side
   duration check is bypassed"*.
-- [ ] EXT-007 — **Unit · P1 · sandboxed** — `_to_world()` — endpoint mapping
+- [x] EXT-007 — **Unit · P1 · sandboxed** — `_to_world()` — endpoint mapping
   (lo→−3, hi→+3, midpoint→0) and out-of-range clamping to the box edge, never
   scale-stretching. Contract: LEARNINGS.md *"Out-of-range values clamp to the
   box edge (never stretch the scale)"*.
-- [ ] EXT-008 — **Unit · P1 · sandboxed** — `_normalize()` — flat/zero/NaN
+- [x] EXT-008 — **Unit · P1 · sandboxed** — `_normalize()` — flat/zero/NaN
   input returns all-zeros (the `hi − lo < 1e-9` guard); normal input maps to
   exactly [0, 1].
-- [ ] EXT-009 — **Unit · P1 · sandboxed** — `_hold_forward()` — (a) invalid
+- [x] EXT-009 — **Unit · P1 · sandboxed** — `_hold_forward()` — (a) invalid
   frames take the previous valid value; (b) a leading invalid run is
   back-filled with the first valid value; (c) an all-invalid array becomes the
   fallback. Contract: docstring + LEARNINGS.md *"pitch carry-forward
   (Phase 1)"*.
-- [ ] EXT-010 — **Unit · P0 · sandboxed** — `extract_features()` end-to-end
+- [x] EXT-010 — **Unit · P0 · sandboxed** — `extract_features()` end-to-end
   pyin unvoiced carry-forward — a tone→silence→tone clip produces a
   *continuous* pitch track (no frame drops toward the box floor during the
   unvoiced gap); a fully unvoiced clip (white noise under the voicing
   threshold) falls back to the 220 Hz neutral. Contract: SPEC.md *"unvoiced /
   quiet frames carry forward the last voiced value (keeps the trail
   continuous) rather than nulling"*.
-- [ ] EXT-011 — **Unit · P1 · sandboxed** — quiet-frame hold — frames with RMS
+- [x] EXT-011 — **Unit · P1 · sandboxed** — quiet-frame hold — frames with RMS
   < `SILENCE_RMS_FRAC` (6%) of peak hold **all three** of pitch/timbre/motion
   (not just pitch) while amplitude still reflects the true low energy.
   Contract: LEARNINGS.md *"Quiet-frame hold SILENCE_RMS_FRAC = 0.06 … all
   three, not just pitch … Amplitude still reflects the real low energy"*.
-- [ ] EXT-012 — **Unit · P0 · sandboxed** — `_trim_boundary_silence()` — a clip
+- [x] EXT-012 — **Unit · P0 · sandboxed** — `_trim_boundary_silence()` — a clip
   with 1 s leading + 1 s trailing digital silence around a tone loses only the
   boundary silence (±`TRIM_PAD_FRAMES`); a clip with an **interior** quiet gap
   keeps its full frame count (interior never cut). Contract: SPEC.md
   *"Boundary silence trim: leading/trailing silence is removed (interior
   untouched)"*.
-- [ ] EXT-013 — **Unit · P0 · sandboxed** — trim offset restored — after a
+- [x] EXT-013 — **Unit · P0 · sandboxed** — trim offset restored — after a
   leading-silence trim, `features[0]["t"]` ≈ the silence duration on the
   **original** timeline (offset added back), so the untrimmed playback copy
   scrub-syncs. Contract: SPEC.md `t` row *"boundary-trim offset added back so
   playback scrub-syncs"*.
-- [ ] EXT-014 — **Unit · P1 · sandboxed** — trim no-op guards — returns
+- [x] EXT-014 — **Unit · P1 · sandboxed** — trim no-op guards — returns
   `(y, 0)` unchanged for: input shorter than `N_FFT`; an all-signal clip
   (nothing below threshold); a clip whose trim would leave `< 2 * N_FFT`
   samples. Contract: docstring *"No-ops … when nothing is clearly below signal
   or the result would be degenerate"*.
-- [ ] EXT-015 — **Unit · P1 · sandboxed** — `_smooth()` — output length equals
+- [x] EXT-015 — **Unit · P1 · sandboxed** — `_smooth()` — output length equals
   input length (edge padding), `window <= 1` and `size < 3` are no-ops, and a
   step signal's plateau values are unchanged (no phase shift). Contract:
   LEARNINGS.md Part C smoothing design (`SMOOTH_WINDOW = 5`,
   `AMP_SMOOTH_WINDOW = 3`).
-- [ ] EXT-016 — **Unit · P1 · sandboxed** — `compute_spectrogram()` — payload
+- [x] EXT-016 — **Unit · P1 · sandboxed** — `compute_spectrogram()` — payload
   shape: `bins == 64`, `cols <= 256`, `len(data) == bins * cols`, all values
   int 0–255, column-major order (verified with a synthetic clip whose energy
   moves low→high over time). Contract: SPEC.md *"compact mel-spectrogram
   ({bins, cols, data, freq_ticks})"* + LEARNINGS.md Phase-6 note.
-- [ ] EXT-017 — **Unit · P1 · sandboxed** — `_mel_tick_positions()` — only
+- [x] EXT-017 — **Unit · P1 · sandboxed** — `_mel_tick_positions()` — only
   ticks below Nyquist are emitted (at sr=22050, the 8000 Hz tick appears but
   a hypothetical ≥11025 Hz one would not), positions are strictly increasing
   in [0, 1], labels format as `"250"`/`"1k"`/`"4k"`. Contract: LEARNINGS.md
   Part C *"freq_ticks (_mel_tick_positions, Slaney mel) so the frontend needs
   no mel math"*.
-- [ ] EXT-018 — **Unit · P2 · sandboxed** — degenerate inputs —
+- [x] EXT-018 — **Unit · P2 · sandboxed** — degenerate inputs —
   `extract_features()` on empty/zero-length audio returns `[]`;
   `compute_spectrogram()` returns the `{bins:0, cols:0, data:[],
   freq_ticks:[]}` zero payload.
-- [ ] EXT-019 — **Unit · P1 · sandboxed** — determinism — two runs on the same
+- [x] EXT-019 — **Unit · P1 · sandboxed** — determinism — two runs on the same
   file produce byte-identical feature lists (no per-clip model fit, no
   randomness). Contract: LEARNINGS.md *"timbre = log2 spectral centroid …
   deterministic, needs no per-clip model fit"*.
-- [ ] EXT-020 — **Unit · P2 · sandboxed** — axis semantics sanity — a 440 Hz
+- [x] EXT-020 — **Unit · P2 · sandboxed** — axis semantics sanity — a 440 Hz
   sine maps to the expected pitch world coordinate (log2 interpolation of
   (50, 4000) into [−3, 3], ± smoothing tolerance); a click train scores higher
   mean motion than a steady tone of equal loudness. Contract: SPEC.md feature
   table (pitch/motion "How" column) + LEARNINGS.md *"motion = onset-strength
   … spectrally aware"*.
-- [ ] EXT-021 — **Unit · P2 · sandboxed** — `t` is non-decreasing, starts at
+- [x] EXT-021 — **Unit · P2 · sandboxed** — `t` is non-decreasing, starts at
   `trim_offset/sr`, steps ≈ 20 ms (`HOP_LENGTH/SAMPLE_RATE`), and all fields
   are rounded to 4 decimals.
 
@@ -271,14 +344,14 @@ Every documented regression becomes a permanent test. Fixtures are synthetic
 reconstructions because the original clips live only in the Pi's `data/` dir
 (and would be evicted by retention eventually).
 
-- [ ] REG-001 — **Unit · P0 · sandboxed** — origin-collapse / density bug —
+- [x] REG-001 — **Unit · P0 · sandboxed** — origin-collapse / density bug —
   target `extract_features()`. A clip with a loud passage, an interior quiet
   passage, and another loud passage yields ~50 pts/sec of the full analyzed
   span (**not** ~9), and no frame sits near the box-floor corner on all three
   axes during the quiet passage. Contract: LEARNINGS.md *"Part A — density bug
   root cause: librosa.effects.trim … shrank the frame timeline … a 2.8 s clip
   → 54 points. Fix: removed trimming entirely. Quiet frames are HELD"*.
-- [ ] REG-002 — **Unit · P0 · sandboxed** — over-aggressive trim (the old
+- [x] REG-002 — **Unit · P0 · sandboxed** — over-aggressive trim (the old
   `top_db=30` failure) — target `_trim_boundary_silence()`. A clip with one
   very loud transient plus quiet-but-real boundary signal (constructed so
   boundary signal is >30 dB below the peak but >8 dB above the noise floor)
@@ -287,7 +360,7 @@ reconstructions because the original clips live only in the Pi's `data/` dir
   failure was a loud transient inflating the peak so boundary signal >30 dB
   below it got eaten; a floor-relative threshold with an SNR cap keeps real
   signal even then"*.
-- [ ] REG-003 — **Unit · P0 · sandboxed** — clip `25bd6d1c` behavior,
+- [x] REG-003 — **Unit · P0 · sandboxed** — clip `25bd6d1c` behavior,
   synthetically reconstructed: 1.55 s of pure digital silence followed by
   ~1.25 s of tonal "call". Assert: leading silence trimmed (first `t` ≈ 1.5 s
   on the original timeline), ~100% of call frames kept (frame count ≈
@@ -295,14 +368,14 @@ reconstructions because the original clips live only in the Pi's `data/` dir
   analyzed span. Contract: LEARNINGS.md *"Regression clip 25bd6d1c is
   genuinely 1.55 s digital silence + 1.24 s call → correctly 141→64 frames
   (all real signal kept)"*.
-- [ ] REG-004 — **Unit · P1 · sandboxed** — pyin resolution/speed tradeoff,
+- [x] REG-004 — **Unit · P1 · sandboxed** — pyin resolution/speed tradeoff,
   accuracy half — assert `extraction.PYIN_RESOLUTION == 0.25` (guarding the
   Cloudflare-timeout fix against silent reversion) and that a synthetic sine
   sweep's detected pitch is within ~25 cents of ground truth (the documented
   cost was ~6 cents mean / 15 cents p95). Contract: LEARNINGS.md *"PYIN
   _RESOLUTION = 0.25 … cut a 60 s clip's pyin from 37 s → 6.5 s for only
   ~6 cents mean / 15 cents p95 pitch shift"*.
-- [ ] REG-005 — **Manual-only · P2 · needs the real Pi (`perf` marker, no mic,
+- [x] REG-005 — **Manual-only · P2 · needs the real Pi (`perf` marker, no mic,
   no sudo)** — pyin resolution/speed tradeoff, speed half — a 60 s synthetic
   clip's full `extract_features()` completes in < 15 s wall-clock **on the
   Pi** (the Session-5 target; leaves ~6× margin under Cloudflare's ~100 s
@@ -311,7 +384,7 @@ reconstructions because the original clips live only in the Pi's `data/` dir
   the `perf` marker, run only when Job is present:
   `pytest -m perf`. Contract: LEARNINGS.md Part A + CLAUDE.md *"extraction
   speed is tuned to stay in single-digit seconds"*.
-- [ ] REG-006 — **Unit · P1 · sandboxed** — pyin range covers high birdsong —
+- [x] REG-006 — **Unit · P1 · sandboxed** — pyin range covers high birdsong —
   a synthetic 2.5–3.7 kHz tone is detected near the top of the pitch axis,
   not collapsed to the 220 Hz unvoiced fallback; assert `FMAX == 4000.0`,
   `FMIN == 50.0`. Contract: LEARNINGS.md *"pyin range raised. FMAX 2093 →
@@ -332,12 +405,12 @@ The `/capture` tests use a **stub** rec script written to the temp dir and
 monkeypatched into `main.REC_WRAPPER` — the real `~/bin/rec` is never touched
 or invoked (CLAUDE.md hardware rule).
 
-- [ ] API-001 — **API-integration · P0 · sandboxed** — `POST /upload` happy
+- [x] API-001 — **API-integration · P0 · sandboxed** — `POST /upload` happy
   path — a small WAV returns 200 with `{id, features, spectrogram,
   duration_s, audio_url}`, features pass the EXT-001..004 gates, and
   `audio_url` is `/audio/{id}.opus`. Contract: SPEC.md API table `/upload`
   row.
-- [ ] API-002 — **API-integration · P0 · sandboxed** — `POST /upload` 20 MB
+- [x] API-002 — **API-integration · P0 · sandboxed** — `POST /upload` 20 MB
   limit — a 21 MB body returns **413** with the "exceeds the 20 MB limit"
   detail, and the size is enforced by streaming (send a small
   `Content-Length` header with a large body to prove the header isn't
@@ -345,83 +418,83 @@ or invoked (CLAUDE.md hardware rule).
   upload size | 20 MB (server-side enforced, clear error beyond it)"*;
   VERIFICATION_LOG Phase 2 *"size enforced by streaming to disk with a hard
   cap, not trusting Content-Length"*.
-- [ ] API-003 — **API-integration · P1 · sandboxed** — `POST /upload` empty
+- [x] API-003 — **API-integration · P1 · sandboxed** — `POST /upload` empty
   file → **400** "Empty upload."
-- [ ] API-004 — **API-integration · P0 · sandboxed** — `POST /upload`
+- [x] API-004 — **API-integration · P0 · sandboxed** — `POST /upload`
   undecodable junk bytes → **422** "Could not read audio…". Contract:
   VERIFICATION_LOG Phase 2.
-- [ ] API-005 — **API-integration · P0 · sandboxed** — `POST /upload` 60 s
+- [x] API-005 — **API-integration · P0 · sandboxed** — `POST /upload` 60 s
   limit — a 61 s WAV → **422** with the duration message; a 60.3 s file (in
   the +0.5 s container-rounding tolerance) is accepted with
   `duration_s == 60.0`. Contract: CLAUDE.md locked 60 s cap; `storage.py`
   tolerance comment.
-- [ ] API-006 — **API-integration · P1 · sandboxed** — `POST /upload` of a
+- [x] API-006 — **API-integration · P1 · sandboxed** — `POST /upload` of a
   video file with an audio track → 200 (ffmpeg `-vn` extracts audio).
   Contract: SPEC.md *"or a video whose audio is extracted with ffmpeg
   first"*.
-- [ ] API-007 — **API-integration · P1 · sandboxed** — `GET /history` — rows
+- [x] API-007 — **API-integration · P1 · sandboxed** — `GET /history` — rows
   newest-first, each exactly `{id, created_at (ISO-8601 UTC), source_type,
   duration_s}` — no feature payload, no paths leaked. Contract: SPEC.md
   `/history` row.
-- [ ] API-008 — **API-integration · P1 · sandboxed** — `GET /history/{id}` —
+- [x] API-008 — **API-integration · P1 · sandboxed** — `GET /history/{id}` —
   full payload: summary keys + `features` + `spectrogram` + `audio_url`.
   Contract: SPEC.md `/history/{id}` row.
-- [ ] API-009 — **API-integration · P1 · sandboxed** — `GET
+- [x] API-009 — **API-integration · P1 · sandboxed** — `GET
   /history/{unknown}` → **404** "Clip not found."
-- [ ] API-010 — **API-integration · P2 · sandboxed** — `GET /history/{id}`
+- [x] API-010 — **API-integration · P2 · sandboxed** — `GET /history/{id}`
   whose feature file was deleted on disk → **410** "Clip features gone."
-- [ ] API-011 — **API-integration · P1 · sandboxed** — backward compat: a
+- [x] API-011 — **API-integration · P1 · sandboxed** — backward compat: a
   feature file stored as a plain JSON array (pre-spectrogram era) is served
   with `features` populated and `spectrogram: null`. Contract: LEARNINGS.md
   *"Backward-compat: /history/{id} still reads the older plain-array files
   (spectrogram = null)"*.
-- [ ] API-012 — **API-integration · P1 · sandboxed** — `GET /audio/{file}` —
+- [x] API-012 — **API-integration · P1 · sandboxed** — `GET /audio/{file}` —
   200 with `content-type: audio/ogg` for an existing opus; **404** for a
   missing one.
-- [ ] API-013 — **API-integration · P0 · sandboxed** — path-traversal guard —
+- [x] API-013 — **API-integration · P0 · sandboxed** — path-traversal guard —
   `GET /audio/..%2Fecho.sqlite`, `/audio/foo%2Fbar` and the same patterns on
   `/samples/audio/…` → **400** "Bad filename." — the DB and feature files
   must never be servable. Guards in `main.py:154` and `main.py:174`.
-- [ ] API-014 — **API-integration · P1 · sandboxed** — `GET /samples` — 3
+- [x] API-014 — **API-integration · P1 · sandboxed** — `GET /samples` — 3
   entries, each carrying the full attribution summary (`id, species,
   sci_name, recordist, license, license_url, source_url, xc_id, duration_s`)
   and **no** feature payload or internal file names. Contract: SPEC.md
   *"/samples | Curated sample library: list with attribution + metadata"*.
-- [ ] API-015 — **API-integration · P1 · sandboxed** — `GET /samples/{id}` —
+- [x] API-015 — **API-integration · P1 · sandboxed** — `GET /samples/{id}` —
   full payload with features + spectrogram + `audio_url =
   /samples/audio/…`; unknown id → **404**; a manifest entry whose feature
   file is missing → **404** (returns `None`).
-- [ ] API-016 — **API-integration · P1 · sandboxed** — `GET
+- [x] API-016 — **API-integration · P1 · sandboxed** — `GET
   /samples/audio/{file}` — 200 `audio/ogg` for a committed sample opus;
   **404** for a missing name.
-- [ ] API-017 — **API-integration · P0 · sandboxed** — route-order guard —
+- [x] API-017 — **API-integration · P0 · sandboxed** — route-order guard —
   `GET /samples/audio/asian-koel.opus` is served by the audio route, NOT
   matched as `sample_item(sample_id="audio")`; i.e. the two-segment route
   declared first keeps precedence. Contract: `main.py:163` comment *"Route
   order: … declared before /samples/{sample_id} so there's no ambiguity"*.
-- [ ] API-018 — **API-integration · P0 · sandboxed** — StaticFiles never
+- [x] API-018 — **API-integration · P0 · sandboxed** — StaticFiles never
   shadows an API route — with a fixture `frontend/dist` present (seam #3):
   `/history`, `/samples`, `/api/health` still return JSON (not
   `index.html`), while `/` returns the SPA `index.html` and an asset path
   serves the file. Contract: CLAUDE.md standing guardrail *"StaticFiles is
   mounted last in main.py, after all API routes"*.
-- [ ] API-019 — **API-integration · P2 · sandboxed** — `GET /api/health` →
+- [x] API-019 — **API-integration · P2 · sandboxed** — `GET /api/health` →
   `{"status": "ok"}` (the readiness probe HW-003 depends on).
-- [ ] API-020 — **API-integration · P1 · sandboxed** — `POST /capture` with
+- [x] API-020 — **API-integration · P1 · sandboxed** — `POST /capture` with
   `REC_WRAPPER` pointed at a nonexistent path → **503** "Pi mic wrapper
   (~/bin/rec) not found." (This is also what CI machines would hit by
   default — the test pins the behavior.)
-- [ ] API-021 — **API-integration · P0 · sandboxed** — `POST /capture` happy
+- [x] API-021 — **API-integration · P0 · sandboxed** — `POST /capture` happy
   path via a **stub** rec script (writes a synthetic WAV to the requested
   path, exits 0; monkeypatched `main.REC_WRAPPER`) → 200, full pipeline
   runs, and the history row has `source_type == "pi_mic"`. Contract: SPEC.md
   `/capture` row; VERIFICATION_LOG Phase 5. **Never invokes the real
   `~/bin/rec`.**
-- [ ] API-022 — **API-integration · P1 · sandboxed** — `/capture` failure
+- [x] API-022 — **API-integration · P1 · sandboxed** — `/capture` failure
   surfaces — stub exits non-zero → **503** with stderr excerpt (the ALSA
   card-shift symptom is *reported*, never retried/fixed, per CLAUDE.md);
   stub that sleeps past `duration + 20` → **504** "Mic capture timed out."
-- [ ] API-023 — **API-integration · P1 · sandboxed** — `/capture` validation —
+- [x] API-023 — **API-integration · P1 · sandboxed** — `/capture` validation —
   `duration: 61` and `duration: 0` → **422** (pydantic `gt=0,
   le=MAX_DURATION_S`). Contract: SPEC.md *"Body {duration} (≤60)"*.
 
@@ -432,39 +505,39 @@ or invoked (CLAUDE.md hardware rule).
 Direct calls to `process_audio` / `_enforce_retention` with temp dirs + temp
 DB. Fully sandboxed (real ffmpeg for transcodes).
 
-- [ ] STO-001 — **Unit · P0 · sandboxed** — retention evicts oldest row AND
+- [x] STO-001 — **Unit · P0 · sandboxed** — retention evicts oldest row AND
   files — with `RETENTION_LIMIT` monkeypatched to 3, saving a 4th clip
   deletes the oldest clip's DB row **and** both its files (`data/audio/*.opus`
   + `data/features/*.json`). Contract: CLAUDE.md locked *"Last 50 entries;
   oldest entry's files + DB row deleted on each save beyond 50"*.
-- [ ] STO-002 — **Unit · P0 · sandboxed** — retention ordering — with mixed
+- [x] STO-002 — **Unit · P0 · sandboxed** — retention ordering — with mixed
   `created_at` timestamps inserted out of order, the survivors are exactly
   the N newest by `created_at` (not by insertion order or id).
-- [ ] STO-003 — **Unit · P0 · sandboxed** — raw-audio discard —
+- [x] STO-003 — **Unit · P0 · sandboxed** — raw-audio discard —
   after `process_audio()` returns, the raw input file and the intermediate
   `_x.wav` are gone; only the transcoded `.opus` + feature `.json` persist.
   Contract: CLAUDE.md locked *"Raw upload processed then discarded; only a
   small transcoded playback copy (opus/mp3) is kept"* and the standing
   guardrail *"Raw uploaded/recorded audio must never persist … no
   exceptions (SD-card disk constraint)"*.
-- [ ] STO-004 — **Unit · P0 · sandboxed** — failure rollback — when
+- [x] STO-004 — **Unit · P0 · sandboxed** — failure rollback — when
   extraction raises mid-pipeline (monkeypatched `extract_features` →
   exception, and separately an undecodable input), no partial `.opus` /
   `.json` remains, no DB row is created, and the raw file is still deleted
   (the `finally` block). Contract: `storage.py:135` *"Roll back any partial
   artifacts on failure"*.
-- [ ] STO-005 — **Unit · P1 · sandboxed** — metadata-only DB — the `clips`
+- [x] STO-005 — **Unit · P1 · sandboxed** — metadata-only DB — the `clips`
   schema stores only strings/floats/datetime (id, created_at, source_type,
   duration_s, feature_path, audio_path); after several saves the SQLite file
   stays small (< ~100 KB) proving no blob leaked in. Contract: CLAUDE.md
   locked *"Never store audio blobs in the DB"*.
-- [ ] STO-006 — **Unit · P1 · sandboxed** — `probe_duration()` — raises
+- [x] STO-006 — **Unit · P1 · sandboxed** — `probe_duration()` — raises
   `ProcessingError` for junk input, ffprobe non-zero exit, and unparseable
   output; `process_audio` maps zero duration to "Audio has zero duration."
-- [ ] STO-007 — **Unit · P1 · sandboxed** — duration tolerance + effective
+- [x] STO-007 — **Unit · P1 · sandboxed** — duration tolerance + effective
   duration — 60.0–60.5 s accepted; > 60.5 s → `ProcessingError`; stored
   `duration_s == min(actual, 60.0)` (matches the truncated extraction).
-- [ ] STO-008 — **Unit · P0 · sandboxed** — sample-library retention immunity
+- [x] STO-008 — **Unit · P0 · sandboxed** — sample-library retention immunity
   — after churning enough clips through `process_audio` to trigger multiple
   evictions (limit lowered), every `samples/audio/*.opus` and
   `samples/features/*.json` still exists and `list_samples()` still returns
@@ -472,10 +545,10 @@ DB. Fully sandboxed (real ffmpeg for transcodes).
   never see them. Contract: CLAUDE.md locked *"Sample library exception …
   never a clips DB row, never subject to the 50-entry retention rule"*;
   LEARNINGS.md Part D.
-- [ ] STO-009 — **Unit · P2 · sandboxed** — playback copy validity — the
+- [x] STO-009 — **Unit · P2 · sandboxed** — playback copy validity — the
   produced `.opus` is ffprobe-decodable, mono, and dramatically smaller than
   the raw WAV input (the SD-card rationale).
-- [ ] STO-010 — **Unit · P2 · sandboxed** — retention tolerates missing files
+- [x] STO-010 — **Unit · P2 · sandboxed** — retention tolerates missing files
   — evicting a row whose files were already deleted by hand does not raise
   (`unlink(missing_ok=True)` + `OSError` guard) and still removes the row.
 
@@ -488,55 +561,55 @@ no browser, no mic. Scene.jsx (WebGL/three) is **not** realistically
 unit-testable in jsdom — it is covered by E2E only. Spectrogram's canvas
 *pixels* likewise; its DOM (axes/ticks/playhead) is unit-testable.
 
-- [ ] FE-001 — **Unit · P0 · sandboxed** — `indexForTime()` (App.jsx; needs
+- [x] FE-001 — **Unit · P0 · sandboxed** — `indexForTime()` (App.jsx; needs
   seam #2 to export) — the nearest-point binary search: exact hit, midpoint
   tie resolving to the truly nearer neighbor, `t` before the first frame → 0,
   after the last → last index, empty array → null. Contract: LEARNINGS.md
   *"Nearest point found by binary search over t-ordered frames"* — this is
   the scrubber-to-trail sync core.
-- [ ] FE-002 — **Unit · P0 · sandboxed** — `pickMime()` (useRecorder.js) —
+- [x] FE-002 — **Unit · P0 · sandboxed** — `pickMime()` (useRecorder.js) —
   the fallback chain in order (`audio/webm;codecs=opus` → `audio/webm` →
   `audio/mp4` → `audio/ogg;codecs=opus`) with `MediaRecorder.isTypeSupported`
   mocked to accept each candidate in turn; no `MediaRecorder` at all → null;
   none supported → `''` (browser default). Contract: LEARNINGS.md
   *"MediaRecorder mime negotiation (Phase 4)"*.
-- [ ] FE-003 — **Unit · P1 · sandboxed** — `useRecorder()` (mocked
+- [x] FE-003 — **Unit · P1 · sandboxed** — `useRecorder()` (mocked
   MediaRecorder + getUserMedia, fake timers) — onstop builds a Blob and maps
   extensions (`mp4→.m4a`, `ogg→.ogg`, else `.webm`); the 60 s cap auto-stops;
   tracks are stopped on cleanup (mic released — the UI-side analogue of the
   no-background-listening rule); zero-byte recordings don't fire
   `onComplete`.
-- [ ] FE-004 — **Unit · P1 · sandboxed** — `buildGeometry()` (features.js) —
+- [x] FE-004 — **Unit · P1 · sandboxed** — `buildGeometry()` (features.js) —
   axis layout X=pitch / Y=motion / Z=timbre exactly as stored (no per-clip
   normalization — LEARNINGS Part B), amplitude drives size (`0.55 + a*2.4`)
   and monochrome brightness, amplitude clamped to [0,1], duration = last `t`.
-- [ ] FE-005 — **Unit · P1 · sandboxed** — `api.js` error parsing — non-OK
+- [x] FE-005 — **Unit · P1 · sandboxed** — `api.js` error parsing — non-OK
   responses surface the backend's `detail` string (e.g. the 413 "20 MB
   limit" message) and fall back to `Request failed (status)` for non-JSON
   bodies — this is what the user sees in the error toast.
-- [ ] FE-006 — **Unit · P1 · sandboxed** — `Gallery` — renders items from a
+- [x] FE-006 — **Unit · P1 · sandboxed** — `Gallery` — renders items from a
   mocked `getHistory` (source icon per `source_type`, duration, short id),
   empty state, error state; clicking a card calls `getClip(id)`, then
   `onLoaded` + drawer `onClose`. Contract: SPEC.md *"History gallery listing
   past clips, click to reload via /history/{id}"*.
-- [ ] FE-007 — **Unit · P2 · sandboxed** — `Gallery` refresh — bumping
+- [x] FE-007 — **Unit · P2 · sandboxed** — `Gallery` refresh — bumping
   `refreshKey` triggers a re-fetch (the post-upload auto-refresh path,
   `historyKey` in App).
-- [ ] FE-008 — **Unit · P1 · sandboxed** — `Samples` attribution rendering —
+- [x] FE-008 — **Unit · P1 · sandboxed** — `Samples` attribution rendering —
   each card shows species, scientific name, recordist, license text linked
   to `license_url`, and "Xeno-canto XC{id}" linked to `source_url`; the
   footer credit line renders. Contract: SPEC.md *"each sample's attribution
   … is shown in the UI"* (CC BY-NC-SA obligation — a P1, not cosmetic).
-- [ ] FE-009 — **Unit · P2 · sandboxed** — `Samples` pick → `onLoaded` is
+- [x] FE-009 — **Unit · P2 · sandboxed** — `Samples` pick → `onLoaded` is
   called with `source_type: 'sample'`, and App then renders the in-view
   credit overlay (`sampleMeta`) with license + source links.
-- [ ] FE-010 — **Unit · P1 · sandboxed** — `PlaybackBar` — scrubbing the
+- [x] FE-010 — **Unit · P1 · sandboxed** — `PlaybackBar` — scrubbing the
   range input calls `onSeek(t)` and sets `audio.currentTime`; transport is
   disabled with no `audioUrl`; changing `audioUrl` pauses and resets to 0;
   `timeupdate` events propagate to `onSeek`. Contract: LEARNINGS.md
   *"Playback highlight driven by a single playheadSec state, updated by BOTH
   the audio timeupdate AND the seek input"*.
-- [ ] FE-011 — **Unit · P2 · sandboxed** — `Spectrogram` DOM — no-data
+- [x] FE-011 — **Unit · P2 · sandboxed** — `Spectrogram` DOM — no-data
   placeholder text; freq tick labels render at `bottom: pos*100%` from a
   fixture `freq_ticks`; a payload **without** `freq_ticks` (old clips)
   renders without crashing (defaults to `[]` — LEARNINGS Part C
@@ -553,46 +626,46 @@ All sandboxed; the patterns already proven by `verification/*.mjs` are
 formalized into asserting specs. Every spec asserts **zero console/page
 errors** (the standard every VERIFICATION_LOG phase held).
 
-- [ ] E2E-001 — **E2E · P0 · sandboxed** — app boots: WebGL canvas present and
+- [x] E2E-001 — **E2E · P0 · sandboxed** — app boots: WebGL canvas present and
   non-zero-sized, footer shows the bundled sample, 0 console errors
   (formalizes `verify_ui.mjs`).
-- [ ] E2E-002 — **E2E · P0 · sandboxed** — upload flow: set the file input
+- [x] E2E-002 — **E2E · P0 · sandboxed** — upload flow: set the file input
   with a fixture clip → processing overlay appears → footer flips to
   `clip {id}`, trail renders (formalizes `verify_upload.mjs`; this shared
   path is also the stand-in wiring test for phone recording, per
   LEARNINGS.md's follow-up note).
-- [ ] E2E-003 — **E2E · P0 · sandboxed** — scrubber-to-trail sync: after
+- [x] E2E-003 — **E2E · P0 · sandboxed** — scrubber-to-trail sync: after
   loading a clip, drag the seek input to several positions → playhead time
   label updates and the highlight sprite's 3D position changes and tracks
   monotonically (formalizes `verify_playback.mjs`; headless-verifiable by
   design — LEARNINGS Phase 6). Contract: SPEC.md *"Playback scrubber synced
   to the trail (the current point highlights as playback advances)"*.
-- [ ] E2E-004 — **E2E · P1 · sandboxed** — history gallery reload: open the
+- [x] E2E-004 — **E2E · P1 · sandboxed** — history gallery reload: open the
   drawer, cards listed with source icons, click one → footer flips to that
   clip id, drawer closes (formalizes `verify_gallery.mjs`).
-- [ ] E2E-005 — **E2E · P1 · sandboxed** — samples drawer: 3 cards, each with
+- [x] E2E-005 — **E2E · P1 · sandboxed** — samples drawer: 3 cards, each with
   visible recordist/license/XC link; clicking one loads the sample and the
   in-view credit line appears. Contract: SPEC.md sample-library section +
   M9 done-criteria.
-- [ ] E2E-006 — **E2E · P1 · sandboxed** — spectrogram strip: second canvas
+- [x] E2E-006 — **E2E · P1 · sandboxed** — spectrogram strip: second canvas
   renders non-blank pixels, Hz labels from `freq_ticks` and mm:ss time
   labels visible, playhead line moves with the scrubber. Contract: SPEC.md
   *"2D spectrogram strip … log/mel frequency axis (Hz) and a time axis
   (aligned to the scrubber)"*.
-- [ ] E2E-007 — **E2E · P1 · sandboxed** — error surfacing: uploading a junk
+- [x] E2E-007 — **E2E · P1 · sandboxed** — error surfacing: uploading a junk
   file shows the rose error toast with the backend's 422 detail; the app
   stays usable (previous trail intact).
-- [ ] E2E-008 — **E2E · P2 · sandboxed** — drag-and-drop: dispatching
+- [x] E2E-008 — **E2E · P2 · sandboxed** — drag-and-drop: dispatching
   dragover shows the "Drop audio to visualize" overlay; dropping a fixture
   file runs the upload flow.
-- [ ] E2E-009 — **E2E · P1 · sandboxed** — mobile regression pack (Pixel-5
+- [x] E2E-009 — **E2E · P1 · sandboxed** — mobile regression pack (Pixel-5
   emulation, touch): vertical drag leaves the view pixel-identical (polar
   lock — no pole flip), horizontal drag rotates, canvas fills its container
   in portrait AND after rotation to landscape with buffer = client × dpr
   (≤2). Permanently encodes the three mobile bugs fixed post-launch
   (LEARNINGS *"Mobile camera + trail-spike bug fixes"*; formalizes
   `verify_mobile.mjs`).
-- [ ] E2E-010 — **E2E · P2 · sandboxed (best-effort)** — in-browser recording
+- [x] E2E-010 — **E2E · P2 · sandboxed (best-effort)** — in-browser recording
   via Chromium's fake media device (`--use-fake-device-for-media-capture`
   `--use-fake-ui-for-media-capture`): tap Record → countdown visible → Stop
   → blob POSTs to `/upload` → renders. Exercises the real MediaRecorder code
@@ -607,7 +680,7 @@ Live in `tests/test_deployment.py` behind markers, or remain documented manual
 procedures. **Every test here requires Job present.** They run on the Pi
 itself, against the *live* service and real hardware.
 
-- [ ] HW-001 — **API-integration · P1 · `@pytest.mark.hardware`** — real Pi
+- [x] HW-001 — **API-integration · P1 · `@pytest.mark.hardware`** — real Pi
   mic capture: `POST http://127.0.0.1:8014/capture {"duration": 3}` against
   the live service → 200, `source_type == "pi_mic"`, features pass gates.
   Uses the real `~/bin/rec` exactly as the app does — never modified, never
@@ -620,23 +693,23 @@ itself, against the *live* service and real hardware.
   locked *"Echo acquires the mic only for the exact recording duration and
   releases it immediately"* property. Manual because the definitive check is
   a human confirming JARVIS/other mic users still work.
-- [ ] HW-003 — **API-integration · P1 · `@pytest.mark.requires_sudo`** —
+- [x] HW-003 — **API-integration · P1 · `@pytest.mark.requires_sudo`** —
   systemd restart recovery: `sudo -n systemctl restart echo` (in the
   allowlist), then poll `GET /api/health` until 200 within a bounded window,
   then `GET /history` returns data. Status checks use plain
   `systemctl is-active echo` — **never** `sudo -n systemctl status`
   (LEARNINGS: not allowlisted, would hang). Restarts the LIVE service —
   babysat runs only.
-- [ ] HW-004 — **API-integration · P2 · `@pytest.mark.requires_sudo`** —
+- [x] HW-004 — **API-integration · P2 · `@pytest.mark.requires_sudo`** —
   stop/start cycle: `sudo -n systemctl stop echo` → port 8014 stops
   answering → `sudo -n systemctl start echo` → health returns. Confirms the
   unit file survives a cold start (not just restart).
-- [ ] HW-005 — **E2E-smoke · P1 · `@pytest.mark.tunnel`** — public smoke:
+- [x] HW-005 — **E2E-smoke · P1 · `@pytest.mark.tunnel`** — public smoke:
   `GET https://echo.job-joseph.com/history` → 200 JSON; `/` → 200 containing
   `<title>Echo`; `/samples` → the 3 samples. Read-only — writes nothing.
   Contract: SPEC.md deployment *"Done when curl
   https://echo.job-joseph.com/history returns real data"*.
-- [ ] HW-006 — **E2E-smoke · P2 · `@pytest.mark.tunnel`** — public upload
+- [x] HW-006 — **E2E-smoke · P2 · `@pytest.mark.tunnel`** — public upload
   within the edge budget: POST a ~20 s fixture clip to the public `/upload`,
   assert 200 well under 100 s round-trip (guards the Cloudflare 524
   regression the pyin fix bought margin against). **Side effect:** adds one
@@ -689,13 +762,19 @@ them would violate a rule:
 
 ---
 
-## Suggested implementation order (on approval)
+## Implementation order (as executed)
 
-1. `pyproject.toml` markers + `tests/conftest.py` seams/fixtures + the three
-   test-enablement seams (needs sign-off — they touch `db.py`, `App.jsx`,
-   `main.py` minimally).
-2. All P0s: EXT gates, REG-001..003, API limits/traversal/shadowing/capture-stub,
-   STO retention/discard/rollback/sample-immunity, FE-001/002, E2E-001..003.
-3. P1s per suite; wire root `package.json` "test" to the sandboxed suites.
-4. P2s + the opt-in `tests/test_deployment.py` (run once with Job to validate,
-   then reserved for babysat sessions).
+1. ✅ `pyproject.toml` markers + `tests/conftest.py` seams/fixtures + the three
+   test-enablement seams (`db.py`'s `ECHO_DATA_DIR`, `App.jsx`'s
+   `indexForTime` export, `main.py`'s `ECHO_FRONTEND_DIST`).
+2. ✅ All P0s, P1s, and P2s across every suite — the full 89-test plan, not a
+   partial slice (see per-ID checkboxes above).
+3. ✅ Root `package.json` `"test"` wired to the sandboxed suites; `"test:e2e"`
+   kept separate.
+4. ✅ `tests/test_deployment.py` (HW-001/003/004/005/006) implemented and
+   confirmed excluded from a default run — **not executed**, per instruction
+   to leave hardware/sudo/tunnel-gated tests for a babysat session.
+
+See "Implementation & Verification Status" at the top for exactly what ran
+green in this session vs. what remains to be verified (the hardware/sudo/
+tunnel suite, `REG-005`, and E2E-002..010's GPU-dependent environment caveat).

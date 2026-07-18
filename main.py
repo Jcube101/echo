@@ -24,7 +24,11 @@ from storage import (MAX_UPLOAD_BYTES, ProcessingError, process_audio)
 import samples as sample_lib
 
 REC_WRAPPER = os.path.expanduser("~/bin/rec")
-FRONTEND_DIST = ROOT / "frontend" / "dist"
+# ECHO_FRONTEND_DIST lets tests point the StaticFiles mount at a fixture
+# directory instead of the real frontend/dist (test-enablement seam; unset
+# in production).
+FRONTEND_DIST = (Path(os.environ["ECHO_FRONTEND_DIST"])
+                  if os.environ.get("ECHO_FRONTEND_DIST") else ROOT / "frontend" / "dist")
 
 app = FastAPI(title="Echo", description="General-purpose 3D sound visualizer")
 

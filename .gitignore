@@ -44,3 +44,10 @@ verification/
 .env.*
 *.log
 .DS_Store
+
+# Test tooling (TEST_PLAN.md) — generated fixtures/artifacts, not source
+.pytest_cache/
+.coverage
+/e2e/.fixtures/
+/e2e/test-results/
+/e2e/playwright-report/

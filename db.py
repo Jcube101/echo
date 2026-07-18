@@ -6,6 +6,7 @@ decision) — they live on disk under data/audio/ as small transcoded copies.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,7 +15,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 # --- Paths --------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
+# ECHO_DATA_DIR lets the test suite point runtime data at a temp directory
+# instead of the real data/ (test-enablement seam; unset in production).
+DATA_DIR = Path(os.environ["ECHO_DATA_DIR"]) if os.environ.get("ECHO_DATA_DIR") else ROOT / "data"
 AUDIO_DIR = DATA_DIR / "audio"
 FEATURES_DIR = DATA_DIR / "features"
 DB_PATH = DATA_DIR / "echo.sqlite"
