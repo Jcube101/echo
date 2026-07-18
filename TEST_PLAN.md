@@ -9,6 +9,12 @@ approved here.
 Status: **proposed — awaiting Job's approval.** Nothing in this plan has been
 implemented, and no dependency has been installed.
 
+**Approved so far (Job, 2026-07-18):**
+- The three test-enablement seams (see "Test-enablement seams" below) —
+  cleared to implement when the test suite is built.
+- HW-006, including its accepted side effect (one real clip added to
+  production history per run, aged out by retention).
+
 ---
 
 ## Summary
@@ -126,10 +132,10 @@ Wiring (later, on approval): root `package.json` "test" stub →
 `cd frontend && vitest run && cd .. && .venv/bin/pytest`; e2e stays a separate
 explicit command.
 
-### Test-enablement seams (small source changes needing approval first)
+### Test-enablement seams (small source changes — **approved by Job, 2026-07-18**)
 
-The plan needs three tiny testability seams. They are **not** part of this
-session — flagged for approval:
+The plan needs three tiny testability seams. Approved for implementation
+alongside the test suite (still not part of the planning session):
 
 1. **`db.py` paths/engine are bound at import time** (`ROOT`, `DATA_DIR`,
    `engine`, `SessionLocal` are module-level). The conftest must either
@@ -636,6 +642,7 @@ itself, against the *live* service and real hardware.
   regression the pyin fix bought margin against). **Side effect:** adds one
   real clip to production history (ages out via retention — the same
   accepted side effect as Session 5's checks). Flag in the run log.
+  **Approved by Job (2026-07-18), side effect included.**
 - [ ] HW-007 — **Manual-only · P1 · real Android phone** — live phone
   recording at `echo.job-joseph.com`: tap Record → countdown → auto-stop at
   60 s → POST → render. Still the open follow-up in LEARNINGS.md ("cannot be
