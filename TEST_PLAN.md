@@ -4,33 +4,43 @@ This document is the complete, prioritized test plan for Echo, taking it from
 zero automated tests (the root `package.json` "test" script was a stub;
 `verification/` is manual Playwright screenshot checks) to a layered suite.
 
-Status: **implemented (2026-07-18).** All 89 planned tests have test code;
-86 are automated and 3 (`HW-002/007/008`) remain manual-only procedures by
-design (see section G). See "Implementation & Verification Status" below for
-exactly what has been run and what hasn't.
+Status: **implemented (2026-07-18), closed out on real hardware (2026-07-19).**
+All 89 planned tests have test code; 86 are automated and 3
+(`HW-002/007/008`) are manual-only procedures by design (see section G).
+See "Implementation & Verification Status" below for exactly what has been
+run and what hasn't.
 
 **Approved by Job (2026-07-18):**
 - The three test-enablement seams (see "Test-enablement seams" below) —
   implemented.
 - HW-006, including its accepted side effect (one real clip added to
-  production history per run, aged out by retention) — implemented, not run
-  (tunnel-gated; see below).
+  production history per run, aged out by retention) — implemented, run
+  2026-07-19 (see below).
+
+**Closed out with Job on the Pi, 2026-07-19:** all of REG-005 and the
+hardware/sudo/tunnel suite (HW-001, 003, 004, 005, 006) run and green; E2E
+suite run on the Pi's real GPU (10/11 passing); HW-007 run live on a real
+Android phone and passed. Only HW-002 (folded into the HW-001 run below),
+HW-008 (no iPhone available), and E2E-010 (see its own note below) remain
+open — all for reasons outside app/test code, not failures.
 
 ---
 
 ## Implementation & Verification Status
 
-Everything below reflects what was **actually run in this session's sandbox**
-— not an assumption of what "should" pass elsewhere.
+Everything below reflects what was **actually run** — the 2026-07-18 session
+ran the sandboxed suites in a container; 2026-07-19 closed out the rest live
+on jobpi with Job present.
 
-| Suite | Implemented | Run this session | Result |
+| Suite | Implemented | Run | Result |
 |---|---|---|---|
 | Backend unit/regression/API/storage (`tests/`) | 86 IDs → 90 pytest cases | **Yes** — `pytest` (default markers) | **90 passed, 6 deselected** |
 | Frontend unit (`frontend/src/__tests__/`) | 11 IDs → 44 Vitest cases | **Yes** — `npm --prefix frontend run test` | **44 passed** |
-| E2E (`e2e/specs/`) | 10 specs (E2E-001..010) | **Partially** — see caveat below | **1 passed** (E2E-001) — see caveat |
-| Hardware/sudo/tunnel (`tests/test_deployment.py`) | HW-001, 003, 004, 005, 006 | **No — deliberately not attempted**, per instruction | confirmed deselected by default (`--collect-only`); not executed |
-| `perf`-marked (REG-005) | 1 | **No — deliberately not attempted** (Pi-only) | confirmed deselected by default |
-| Manual-only (HW-002, 007, 008) | 0 (procedures, not code) | n/a | n/a |
+| E2E (`e2e/specs/`) | 10 specs, 11 test cases (E2E-001..010) | **Yes, on real Pi GPU (2026-07-19)** — see update below | **10/11 passed**; E2E-010 fails for a root-caused, unfixed environment reason (no audio session — see below), not app/test code |
+| `perf`-marked (REG-005) | 1 | **Yes, on jobpi (2026-07-19)** | **passed** — 60s clip extracted in 8.83s (budget: <15s) |
+| Hardware/sudo/tunnel (`tests/test_deployment.py`) | HW-001, 003, 004, 005, 006 | **Yes, on jobpi with Job present (2026-07-19)** | **5/5 passed** — live mic capture, live service restart + stop/start cycle, public tunnel smoke + real upload within edge budget |
+| Manual-only, run (HW-002, 007) | 0 (procedures, not code) | **Yes (2026-07-19)** | HW-002: `fuser -v /dev/snd/*` showed nothing holding the mic after HW-001 — clean release. HW-007: real Android phone recording round-tripped end to end (clip `2517f2ad2998`, 403 valid feature frames, spectrogram, playable audio) |
+| Manual-only, open (HW-008) | 0 | **No — no iPhone available** | open, deferred |
 
 Root command: `npm test` (repo root) runs the backend + frontend rows above
 in one shot — **134 tests passed, 6 correctly deselected**, zero failures.
@@ -72,11 +82,71 @@ Since the *identical* interaction pattern is what `verify_upload.mjs`,
 `verify_playback.mjs`, `verify_gallery.mjs`, and `verify_mobile.mjs` already
 proved out successfully on real hardware (VERIFICATION_LOG.md), this reads as
 a limitation of this specific no-GPU sandbox rather than a regression.
-**Recommendation:** run `npm run test:e2e` (from repo root) on a machine with
-real GPU acceleration — e.g. the Pi itself, or Job's own machine — before
-relying on E2E-002 through E2E-010. They are implemented and believed
-correct, but **unverified**, exactly like the hardware/sudo/tunnel-gated
-tests below.
+
+### Update (2026-07-19) — run on the Pi's real GPU, theory confirmed
+
+Ran `npm run test:e2e` directly on jobpi (Pi 5, real VideoCore GPU via
+`/dev/dri`, `jcube` already in the `video`/`render` groups — not the earlier
+no-GPU sandboxed container). Two environment fixes were needed first, neither
+touching app source:
+- `@playwright/test` was listed in `package.json` but never actually
+  installed (`node_modules/@playwright/test` was missing) — `npm install`
+  pulled it in.
+- `e2e/playwright.config.mjs` hardcoded `executablePath:
+  '/opt/pw-browsers/chromium'`, a path specific to the old sandboxed
+  container's pre-cached binary. That path doesn't exist on the Pi, which
+  already has its own Playwright-managed Chromium (1228) cached in
+  `~/.cache/ms-playwright`. Removed the override so Playwright resolves its
+  own browser normally.
+
+Result: **the GPU-stall theory was confirmed** — all specs that previously
+hung indefinitely (waiting on a commit + passive-effect flush inside the
+react-three-fiber/Three.js render path) now complete normally with a real
+GPU. Of the 10 specs:
+- **9 passed outright**: E2E-002, 004, 005, 006, 007, 008, 009 (both cases),
+  and 001 (already passing).
+- **2 failed on first run for reasons unrelated to the GPU** — both are now
+  fixed (see below) — leaving **10/10 passing**.
+- **1 fails for a separate, unfixed environment reason**: E2E-010.
+
+**Fixed — Playwright API drift, not app bugs:**
+- `slider.fill(...)` on the `type="range"` Seek input now throws `Malformed
+  value` under `@playwright/test@1.61.1` (this repo's pinned version
+  rejects `.fill()` on range inputs outright — it didn't when these specs
+  were first written). Added `setRangeValue()` to `e2e/helpers.mjs` (sets
+  the value via the native `HTMLInputElement` setter + dispatches `input`
+  and `change`, since React's onChange listens on `input` for controlled
+  range elements) and switched `playback-sync.spec.mjs` and
+  `spectrogram.spec.mjs` to use it.
+- `spectrogram.spec.mjs` asserted `getByText('0:00')` but the spectrogram
+  legitimately renders three `0:00` labels (the playback-bar clock plus two
+  spectrogram time-axis ticks) — Playwright's strict mode correctly rejected
+  the ambiguous locator. Changed to `.first()`.
+
+**Still failing — E2E-010 (recording-fake-device), root-caused, not an app
+or test bug:** `getUserMedia({audio: true})` itself throws
+`NotSupportedError: Not supported` in this session, confirmed by direct
+`page.evaluate()` — happens *before* the app's own code runs. Traced to no
+audio session running on this Pi login (`pactl info` → `Connection
+refused`): Chromium's fake-audio-capture pipeline still needs a working
+audio backend to construct even a synthetic device, and there's none here.
+
+This Pi runs **PipeWire** (not plain PulseAudio) — `pipewire`,
+`pipewire-pulse`, `wireplumber` are installed, but the user-level
+`pipewire.service` is **masked** (deliberately disabled, not merely
+stopped). Job confirmed (2026-07-19): leave it masked, don't unmask it for
+this test. Unmasking would let WirePlumber apply its normal device-policy
+across this session's audio hardware, including the shared USB mic —
+more than a scoped fix for a headless-Chromium test warrants. **E2E-010
+stays a known, unfixed, environment-specific gap.** Nothing in
+`~/.asoundrc`, `~/bin/rec`, or the pipewire mask was touched.
+
+**Recommendation:** the four small diffs above (`e2e/helpers.mjs`,
+`e2e/playwright.config.mjs`, `playback-sync.spec.mjs`,
+`spectrogram.spec.mjs`) are uncommitted on this branch — review and commit
+if they look right. E2E-002 through E2E-009 no longer carry the "implemented
+but unverified" caveat; only E2E-010 does, and only pending a decision on
+starting an audio server on the Pi.
 
 ---
 
@@ -686,12 +756,14 @@ itself, against the *live* service and real hardware.
   Uses the real `~/bin/rec` exactly as the app does — never modified, never
   bypassed to `arecord` (CLAUDE.md hardware rules). If it fails with "audio
   open error", the test must **report** (ALSA card shift is Job's fix) and
-  not retry — assert-and-surface only.
-- [ ] HW-002 — **Manual-only · P2 · real Pi mic** — mic release check: after
+  not retry — assert-and-surface only. **Run 2026-07-19 with Job: passed.**
+- [x] HW-002 — **Manual-only · P2 · real Pi mic** — mic release check: after
   HW-001 completes, confirm nothing holds the capture device (e.g.
   `fuser -v /dev/snd/*` shows no lingering echo-owned process). Verifies the
   locked *"Echo acquires the mic only for the exact recording duration and
-  releases it immediately"* property. Manual because the definitive check is
+  releases it immediately"* property. **Run 2026-07-19 immediately after
+  HW-001: `fuser -v /dev/snd/*` returned nothing — clean release, confirmed.**
+  Manual because the definitive check is
   a human confirming JARVIS/other mic users still work.
 - [x] HW-003 — **API-integration · P1 · `@pytest.mark.requires_sudo`** —
   systemd restart recovery: `sudo -n systemctl restart echo` (in the
@@ -699,28 +771,33 @@ itself, against the *live* service and real hardware.
   then `GET /history` returns data. Status checks use plain
   `systemctl is-active echo` — **never** `sudo -n systemctl status`
   (LEARNINGS: not allowlisted, would hang). Restarts the LIVE service —
-  babysat runs only.
+  babysat runs only. **Run 2026-07-19 with Job: passed.**
 - [x] HW-004 — **API-integration · P2 · `@pytest.mark.requires_sudo`** —
   stop/start cycle: `sudo -n systemctl stop echo` → port 8014 stops
   answering → `sudo -n systemctl start echo` → health returns. Confirms the
-  unit file survives a cold start (not just restart).
+  unit file survives a cold start (not just restart). **Run 2026-07-19 with
+  Job: passed.**
 - [x] HW-005 — **E2E-smoke · P1 · `@pytest.mark.tunnel`** — public smoke:
   `GET https://echo.job-joseph.com/history` → 200 JSON; `/` → 200 containing
   `<title>Echo`; `/samples` → the 3 samples. Read-only — writes nothing.
   Contract: SPEC.md deployment *"Done when curl
-  https://echo.job-joseph.com/history returns real data"*.
+  https://echo.job-joseph.com/history returns real data"*. **Run 2026-07-19:
+  passed.**
 - [x] HW-006 — **E2E-smoke · P2 · `@pytest.mark.tunnel`** — public upload
   within the edge budget: POST a ~20 s fixture clip to the public `/upload`,
   assert 200 well under 100 s round-trip (guards the Cloudflare 524
   regression the pyin fix bought margin against). **Side effect:** adds one
   real clip to production history (ages out via retention — the same
   accepted side effect as Session 5's checks). Flag in the run log.
-  **Approved by Job (2026-07-18), side effect included.**
-- [ ] HW-007 — **Manual-only · P1 · real Android phone** — live phone
+  **Approved by Job (2026-07-18), side effect included. Run 2026-07-19:
+  passed, well within the edge budget.**
+- [x] HW-007 — **Manual-only · P1 · real Android phone** — live phone
   recording at `echo.job-joseph.com`: tap Record → countdown → auto-stop at
-  60 s → POST → render. Still the open follow-up in LEARNINGS.md ("cannot be
-  exercised in headless Chromium (no real mic)"). E2E-010's fake-device run
-  reduces but does not eliminate this.
+  60 s → POST → render. **Run 2026-07-19 with Job:** recorded live on a real
+  Android phone, produced clip `2517f2ad2998` (8.04 s, `source_type:
+  "upload"`) in production history — 403 feature frames, all within the
+  [-3, 3] quality gate, 64×256 spectrogram present, playback audio serving
+  200. Confirms the full real-device → upload → extraction → playback path.
 - [ ] HW-008 — **Manual-only · P2 · real iPhone** — iOS Safari recording
   (`audio/mp4` mime path) — explicitly untested on real hardware per
   LEARNINGS.md; note quirks back into LEARNINGS.md per the ROADMAP v1.x
@@ -771,10 +848,21 @@ them would violate a rule:
    partial slice (see per-ID checkboxes above).
 3. ✅ Root `package.json` `"test"` wired to the sandboxed suites; `"test:e2e"`
    kept separate.
-4. ✅ `tests/test_deployment.py` (HW-001/003/004/005/006) implemented and
-   confirmed excluded from a default run — **not executed**, per instruction
-   to leave hardware/sudo/tunnel-gated tests for a babysat session.
+4. ✅ `tests/test_deployment.py` (HW-001/003/004/005/006) implemented,
+   confirmed excluded from a default run, then **executed with Job present
+   on jobpi (2026-07-19)** — all 5 passed.
+5. ✅ E2E suite run on the Pi's real GPU (2026-07-19), confirming the
+   sandboxed container's GPU-stall theory; 2 Playwright-API-drift bugs found
+   and fixed in test code (not app code) — 10/11 passing.
+6. ✅ HW-002 and HW-007 run live with Job (2026-07-19) — mic-release check
+   clean, real Android phone recording round-tripped end to end.
 
-See "Implementation & Verification Status" at the top for exactly what ran
-green in this session vs. what remains to be verified (the hardware/sudo/
-tunnel suite, `REG-005`, and E2E-002..010's GPU-dependent environment caveat).
+**Open, by design, not by omission:**
+- **HW-008** — no iPhone available; deferred.
+- **E2E-010** — root-caused to no audio session on this Pi login; fixing it
+  would mean unmasking the user `pipewire.service`, which Job declined
+  (2026-07-19) since it's deliberately masked and would extend WirePlumber's
+  device policy to the shared USB mic. Left failing, documented.
+
+See "Implementation & Verification Status" at the top for the full run
+history across both sessions.

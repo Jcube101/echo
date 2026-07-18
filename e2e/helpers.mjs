@@ -24,3 +24,16 @@ export async function uploadFileAndWait(page, filePath, timeout = 20_000) {
   await page.locator('input[type="file"]').setInputFiles(filePath)
   await expect(page.getByText(/clip [0-9a-f]+/)).toBeVisible({ timeout })
 }
+
+/** Sets a range/slider input's value and fires the events React's onChange
+ * needs. Playwright's locator.fill() rejects type="range" inputs outright
+ * ("Malformed value"), and a plain el.value= assignment is invisible to a
+ * React-controlled input unless dispatched through the native setter. */
+export async function setRangeValue(locator, value) {
+  await locator.evaluate((el, val) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(el, val)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  }, String(value))
+}

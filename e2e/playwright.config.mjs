@@ -33,10 +33,6 @@ export default defineConfig({
     // real MediaRecorder code path with no real mic and no manual prompt.
     // Harmless for every other spec (only getUserMedia calls are affected).
     launchOptions: {
-      // This container's @playwright/test resolved a version expecting a
-      // browser revision newer than the pre-cached one — use the pinned
-      // chromium binary directly instead of triggering a download.
-      executablePath: '/opt/pw-browsers/chromium',
       args: [
         '--use-fake-device-for-media-capture',
         '--use-fake-ui-for-media-capture',

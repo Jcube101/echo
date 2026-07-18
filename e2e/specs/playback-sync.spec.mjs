@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { TONE_WAV } from '../fixtures-path.mjs'
-import { trackConsoleErrors, uploadFileAndWait } from '../helpers.mjs'
+import { trackConsoleErrors, uploadFileAndWait, setRangeValue } from '../helpers.mjs'
 
 // E2E-003 — scrubber-to-trail sync: dragging the seek input to several
 // positions updates the playhead time label monotonically, with zero
@@ -21,8 +21,7 @@ test('scrubbing moves the playhead label forward through the clip', async ({ pag
 
   const labels = []
   for (const frac of [0.15, 0.5, 0.85]) {
-    await slider.fill((max * frac).toFixed(2))
-    await slider.dispatchEvent('change')
+    await setRangeValue(slider, (max * frac).toFixed(2))
     await page.waitForTimeout(100)
     labels.push(await slider.inputValue())
   }
