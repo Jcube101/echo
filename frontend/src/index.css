@@ -2,6 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
+/* shadcn/ui theme variables — mapped to Echo's EXISTING palette, not shadcn's
+   own defaults (Part A, shadcn polish session). Every value here is the exact
+   HSL conversion of a color Echo already uses somewhere in the app, so shadcn
+   primitives inherit Echo's look precisely rather than introducing a new one:
+     --background        ink       #0a0a12   (page background)
+     --card / --popover   panel     #12121c   (drawers, dropdowns, tooltips —
+                                                same surface as the History/
+                                                Samples asides already use)
+     --foreground         base text #e8e8f0   (already the global text color)
+     --muted-foreground   slate-400 #94a3b8   (existing secondary-text convention)
+     --primary            indigo-500 #6366f1  (Echo's existing interactive
+                                                accent — the Samples "Visualize"
+                                                button, seek-slider accent, and
+                                                Gallery/Samples "selected" ring
+                                                are already this hue; the signature
+                                                teal stays reserved for the 3D
+                                                trail only, per this session's
+                                                off-limits rule)
+     --destructive        rose-500  #f43f5e   (existing error-toast / Stop-button red)
+     --ring                indigo-400 #818cf8 (focus ring — same accent family,
+                                                doesn't compete with the trail's teal)
+   --border/--input/--muted/--accent are plain white; tailwind.config.js bakes a
+   FIXED alpha onto each (0.1/0.15/0.08/0.1) so `border-border`, `bg-muted`, etc.
+   render as literally the same translucent white-over-dark overlay Echo already
+   uses everywhere (bg-white/10, border-white/10) — not a new opaque theme color. */
+:root {
+  --background: 240 28.6% 5.5%;
+  --foreground: 240 21.1% 92.5%;
+  --card: 240 21.7% 9.0%;
+  --card-foreground: 240 21.1% 92.5%;
+  --popover: 240 21.7% 9.0%;
+  --popover-foreground: 240 21.1% 92.5%;
+  --primary: 238.7 83.5% 66.7%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 100%;
+  --secondary-foreground: 240 21.1% 92.5%;
+  --muted: 0 0% 100%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 0 0% 100%;
+  --accent-foreground: 240 21.1% 92.5%;
+  --destructive: 349.7 89.2% 60.2%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 100%;
+  --input: 0 0% 100%;
+  --ring: 234.5 89.5% 73.9%;
+  --radius: 0.5rem;
+}
+
+/* Respect prefers-reduced-motion (Part C accessibility floor): collapse all
+   transitions/animations to effectively instant for users who've asked for it,
+   site-wide — covers shadcn's Radix-driven animate-in/out utilities too. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;

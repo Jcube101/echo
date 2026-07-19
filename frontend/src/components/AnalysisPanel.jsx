@@ -115,6 +115,7 @@ export default function AnalysisPanel({ features, duration, playheadSec, onSeek 
               key={pf.key}
               onClick={() => toggle(pf.key)}
               className={'flex items-center gap-1.5 text-[11px] sm:text-xs rounded px-1.5 py-0.5 transition ' +
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-ink ' +
                 (off ? 'opacity-35 hover:opacity-60' : 'hover:bg-white/10')}
               title={off ? `Show ${pf.label}` : `Hide ${pf.label}`}
             >
@@ -179,7 +180,7 @@ export default function AnalysisPanel({ features, duration, playheadSec, onSeek 
           {/* Hover readout — every visible line's exact value at the cursor. */}
           {hoverFrame && (
             <div
-              className="absolute top-1 z-10 pointer-events-none rounded-md border border-white/15 bg-panel/95 backdrop-blur px-2 py-1.5 text-[10.5px] shadow-lg"
+              className="absolute top-1 z-10 pointer-events-none rounded-md border border-border bg-popover/95 text-popover-foreground backdrop-blur px-2 py-1.5 text-[10.5px] shadow-lg animate-in fade-in-0 zoom-in-95 duration-100"
               style={{
                 left: `calc(${hoverX * 100}% ${hoverX > 0.6 ? '- 168px' : '+ 8px'})`,
                 minWidth: 150,

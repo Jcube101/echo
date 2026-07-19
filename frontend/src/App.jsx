@@ -1,11 +1,15 @@
 import React, { useCallback, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import Scene from './components/Scene.jsx'
 import AnalysisPanel from './components/AnalysisPanel.jsx'
 import Controls from './components/Controls.jsx'
 import PlaybackBar from './components/PlaybackBar.jsx'
 import Gallery from './components/Gallery.jsx'
 import Samples from './components/Samples.jsx'
-import { uploadAudio } from './lib/api.js'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Toaster } from '@/components/ui/sonner'
+import { uploadAudio, friendlyError } from './lib/api.js'
 import { indexForTime } from './lib/nearestIndex.js'
 import sample from './data/sample.json'
 
@@ -65,13 +69,17 @@ export default function App() {
       const res = await uploadAudio(f, f.name)
       onResult(res)
       onStatus('idle')
+      toast.success('Uploaded', { description: f.name })
     } catch (err) {
-      onStatus('error', err.message || 'Upload failed')
+      const msg = friendlyError(err)
+      onStatus('error', msg)
+      toast.error('Upload failed', { description: msg })
     }
   }, [busy, onResult, onStatus])
 
   return (
     <div className="h-full w-full flex flex-col bg-ink text-slate-100">
+      <Toaster position="top-center" />
       <header className="px-4 py-3 border-b border-white/10 flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Echo</h1>
@@ -81,44 +89,42 @@ export default function App() {
         </div>
 
         {/* View toggle: the 3D trail (primary) vs. the v1.5 spectral panel —
-            a genuinely separate view, not merged into the 3D scene. */}
-        <div className="flex items-center rounded-md bg-white/5 p-0.5 text-sm" role="tablist" aria-label="View">
-          <button
-            role="tab"
-            aria-selected={view === 'trail'}
-            onClick={() => setView('trail')}
-            className={'px-3 py-1.5 rounded font-medium transition ' +
-              (view === 'trail' ? 'bg-white/15 text-white' : 'text-slate-400 hover:text-slate-200')}
-          >
-            3D Trail
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === 'panel'}
-            onClick={() => setView('panel')}
-            className={'px-3 py-1.5 rounded font-medium transition ' +
-              (view === 'panel' ? 'bg-white/15 text-white' : 'text-slate-400 hover:text-slate-200')}
-          >
-            Spectral Panel
-          </button>
-        </div>
+            a genuinely separate view, not merged into the 3D scene. Radix Tabs
+            gives this a real tab-switch transition (see index.css) and correct
+            keyboard/aria semantics for free. */}
+        <Tabs value={view} onValueChange={setView}>
+          <TabsList aria-label="View" className="bg-white/5 h-auto p-0.5 rounded-md">
+            <TabsTrigger
+              value="trail"
+              className="px-3 py-1.5 rounded font-medium data-[state=active]:bg-white/15 data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:text-slate-400"
+            >
+              3D Trail
+            </TabsTrigger>
+            <TabsTrigger
+              value="panel"
+              className="px-3 py-1.5 rounded font-medium data-[state=active]:bg-white/15 data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:text-slate-400"
+            >
+              Spectral Panel
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         <div className="ml-auto flex items-center gap-2">
           <Controls busy={busy} onStatus={onStatus} onResult={onResult} />
-          <button
+          <Button
             onClick={() => setSamplesOpen(true)}
-            className="px-3 py-2 rounded-md text-sm font-medium bg-white/10 hover:bg-white/20 text-slate-100"
+            className="bg-white/10 hover:bg-white/20 text-slate-100"
             title="Curated example birdcalls"
           >
             🐦 Samples
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setGalleryOpen(true)}
-            className="px-3 py-2 rounded-md text-sm font-medium bg-white/10 hover:bg-white/20 text-slate-100"
+            className="bg-white/10 hover:bg-white/20 text-slate-100"
             title="Browse past clips"
           >
             ☰ History
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -128,10 +134,15 @@ export default function App() {
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
       >
+        {/* key={view} + a restrained fade-in gives the tab switch a real
+            transition instead of an instant swap. Purely a wrapper: Scene's
+            own markup/camera/rendering is untouched. */}
         {view === 'trail' ? (
-          <Scene features={features} highlightIndex={highlightIndex} />
+          <div key="trail" className="absolute inset-0 animate-in fade-in-0 duration-200">
+            <Scene features={features} highlightIndex={highlightIndex} />
+          </div>
         ) : (
-          <div className="absolute inset-0 bg-ink">
+          <div key="panel" className="absolute inset-0 bg-ink animate-in fade-in-0 duration-200">
             <AnalysisPanel
               features={features}
               duration={duration}
@@ -156,13 +167,6 @@ export default function App() {
               <div className="text-sm text-slate-200">{message || 'Working…'}</div>
               <div className="text-[11px] text-slate-500">pitch analysis can take a moment</div>
             </div>
-          </div>
-        )}
-
-        {/* Error toast */}
-        {status === 'error' && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-rose-600/90 text-white text-sm px-4 py-2 rounded-md shadow-lg">
-            {message}
           </div>
         )}
 

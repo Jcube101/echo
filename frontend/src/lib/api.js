@@ -10,6 +10,19 @@ async function parseError(res) {
   }
 }
 
+// A caught error's message, in plain terms — for toasts and status banners.
+// `fetch` itself throws a generic "Failed to fetch"/"NetworkError" on a dropped
+// connection (the historical "Failed to fetch" symptom, see LEARNINGS.md); this
+// turns that into something a person can actually act on, rather than passing
+// the raw browser wording through.
+export function friendlyError(err) {
+  const msg = err?.message || ''
+  if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+    return "Couldn't reach the server — check your connection and try again."
+  }
+  return msg || 'Request failed for an unknown reason.'
+}
+
 // Upload an audio file OR a recorded blob — same endpoint, same pipeline.
 export async function uploadAudio(fileOrBlob, filename = 'clip') {
   const form = new FormData()

@@ -249,6 +249,90 @@ the prompt. The data it needs already ships in every v2 payload.
 **Timing:** the extra STFT + `decompose.hpss` add ~1.5 s to a 60 s clip (≈8.5 s →
 ≈10 s full `extract_features`), still ~10× under Cloudflare's ~100 s edge limit.
 
+### Session 7 — shadcn/ui component polish (2026-07-19)
+
+**The `shadcn` CLI's default target moved to Tailwind v4 — pin to v2.10.0 for
+this app.** `npx shadcn@latest` (currently 4.13.1) is a rewritten "universal"
+CLI whose `init` writes Tailwind v4 CSS (`@theme inline`, `@custom-variant`,
+`oklch()` colors) and interactive-only style/preset prompts with no
+non-interactive escape hatch for a Vite+JS project. This app is pinned to
+Tailwind v3.4 (JS `tailwind.config.js`, `@tailwind base/components/utilities`)
+— migrating to v4 was far outside "component polish" scope and would have
+risked the whole app's rendering. Fix: **`npx shadcn@2.10.0`** (the last
+pre-rewrite major) generates the classic, Tailwind-v3-compatible components
+(`bg-primary`, `bg-background`, HSL CSS vars) this app actually needs. Its
+`init` still has an interactive style prompt with no working flag override in
+this version, but `add <component>` **skips the wizard entirely if
+`components.json` already exists** — so the fix is to hand-write
+`components.json` (schema is simple and stable) and go straight to `add`.
+
+**Map shadcn's CSS vars to the app's OWN existing colors, don't invent a new
+theme.** Grepped the codebase for hex values before writing any `:root` var —
+found `--primary` (indigo-500 `#6366f1`) was ALREADY the app's interactive
+accent (seek-slider `accent-indigo-400`, Gallery/Samples "selected" ring,
+Samples' Visualize button), so shadcn's Button/Select/Tooltip inherit it
+correctly instead of introducing a second accent color. `--border`/`--input`/
+`--muted`/`--accent` are `0 0% 100%` (plain white) with the alpha value baked
+directly into the `tailwind.config.js` color function
+(`hsl(var(--border) / 0.1)`) rather than left opaque — this reproduces Echo's
+existing `bg-white/10`-over-dark overlay convention exactly (same rendered
+pixels), not a new flat gray. Verified with an actual pixel diff (`PIL`,
+crop-and-compare), not eyeballing: 0/1,024,000 px differ after all of Part A's
+CSS/config changes, before touching any component.
+
+**A design-system swap doesn't have to break existing e2e tests — but check
+which locators are testing DURABLE behavior vs. implementation details
+first.** The pre-existing History/Samples drawers were tested via
+`page.locator('aside', {hasText:...})` and `.toHaveClass(/translate-x-full/)`
+— both incidental to the OLD hand-rolled always-mounted-and-translated
+implementation, not anything a Radix-based `Sheet` (which unmounts on close
+and renders `role="dialog"` via a Portal) could or should reproduce.
+Re-targeted those two specs at `getByRole('dialog', {name})` +
+`.toBeHidden()` (passes for a genuinely-removed element too) instead of
+forcing the new Sheet to fake the old DOM shape — the right call once you
+recognize the OLD assertions were testing "is this specific old component's
+CSS class present," not "does the drawer behave like a drawer."
+
+**`vi.mock('module')` auto-mocks EVERY export, including ones you add later
+that a test never configured.** Adding `friendlyError()` to `lib/api.js` and
+having `Gallery.jsx`/`Samples.jsx` route their inline error-state text through
+it broke `Gallery.test.jsx`'s "shows an error state when getHistory rejects"
+test — not because the logic changed, but because that test file does
+`vi.mock('../lib/api.js')` (blanket auto-mock), so `friendlyError` silently
+became a stub returning `undefined` inside the test, `setErr(undefined)` is
+falsy, and the expected text never rendered. Fix: kept the pre-existing
+inline `err` state on the ORIGINAL plain `e.message || 'Failed to load …'`
+(unaffected by the new helper) and reserved `friendlyError()` for the new
+toast-copy call sites only, which no existing test touches. Lesson: a new
+helper function threaded into a component that's covered by a blanket
+`vi.mock()` needs either an explicit mock configuration in the test or to
+stay out of the code paths that test already asserts on.
+
+**A newly-visible error can look like a new bug — verify against a clean
+baseline before assuming a regression.** Wiring up `startRecording()`'s
+try/catch (to fix a previously-*silent* `getUserMedia` rejection) coincided
+with `recording-fake-device.spec.mjs` failing ("Recording failed / Not
+supported" toast, `MediaRecorder` rejecting the negotiated mime type under
+`--use-fake-device-for-media-capture`). Confirmed via `git stash -u` (full
+revert to session start) + rebuild + re-run: **the same spec fails
+identically on unmodified `main`** — a pre-existing Chromium/fake-device
+codec-negotiation issue in this environment, unrelated to the session's
+changes. `git stash`/`git stash pop` is the fast way to get a real yes/no
+answer here instead of guessing from a diff.
+
+**shadcn's generated `sonner.jsx` wrapper assumes Next.js (`next-themes`).**
+It calls `useTheme()` from `next-themes` to pick light/dark — meaningless (and
+an extra runtime dependency) in a plain Vite app with no theme provider and
+exactly one (dark) theme. Removed the import, hardcoded `theme="dark"`.
+
+**Radix Tooltip doesn't fit a crosshair-follow readout.** The v1.5
+AnalysisPanel's hover readout tracks the pointer continuously across a
+1000-unit SVG viewBox (see session 6) — Radix Tooltip anchors to one fixed
+trigger element and can't do that. Kept the custom positioning mechanism,
+restyled it onto the same `bg-popover`/`border-border` tokens (+ a matching
+`animate-in fade-in-0 zoom-in-95` entrance) so it *looks* consistent with the
+Tooltip elsewhere in the app without pretending to *be* one.
+
 ---
 
 ## Gotchas & platform quirks

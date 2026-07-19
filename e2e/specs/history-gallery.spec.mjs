@@ -18,7 +18,8 @@ test('gallery lists uploaded clips and reloads on click', async ({ page }) => {
   await uploadFileAndWait(page, LONG_TONE_WAV)
 
   await page.getByTitle('Browse past clips').click()
-  const cards = page.locator('aside', { hasText: 'History' }).getByRole('button')
+  const dialog = page.getByRole('dialog', { name: /History/ })
+  const cards = dialog.getByTestId('history-item')
   await expect(cards.first()).toBeVisible()
   expect(await cards.count()).toBeGreaterThanOrEqual(2)
 
@@ -29,7 +30,9 @@ test('gallery lists uploaded clips and reloads on click', async ({ page }) => {
   const reloadedFooter = await page.getByText(/clip [0-9a-f]+/).textContent()
   expect(reloadedFooter).toBe(firstFooter)
 
-  // drawer closes after picking
-  await expect(page.locator('aside', { hasText: 'History' })).toHaveClass(/translate-x-full/)
+  // sheet closes after picking (shadcn Sheet: unmounts once its exit
+  // animation finishes, so "closed" means the dialog is gone, not merely
+  // translated off-screen)
+  await expect(dialog).toBeHidden()
   expect(errors).toEqual([])
 })

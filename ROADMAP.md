@@ -109,6 +109,14 @@ sound to hand can still see the visualization.
   Point glow + additive-blend teal styling shipped in the post-launch visual
   overhaul; trail time-fade and camera presets are still open
 - 📋 **Planned** — Shareable links to a specific clip's visualization
+- ✅ **Shipped (session 7, 2026-07-19)** — shadcn/ui component polish: Buttons,
+  Select, Tabs, Sheet + Card (History/Samples), and real toast feedback
+  (sonner) replaced the raw HTML controls, with proper hover/focus/disabled/
+  loading states. Palette mapped to Echo's existing colors (pixel-identical
+  before/after, verified by diff), the 3D trail and spectral-panel line
+  colors untouched. Pinned to `shadcn@2.10.0` (Tailwind v3-compatible; the
+  latest CLI targets Tailwind v4). See `LEARNINGS.md` "shadcn/ui component
+  polish" and `VERIFICATION_LOG.md` Session 7.
 
 ---
 
@@ -258,6 +266,12 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-07-19** — Shipped shadcn/ui component polish (session 7, frontend
+  only): Button/Select/Tabs/Sheet+Card/toast primitives replace the raw HTML
+  controls; palette mapped to Echo's exact existing colors (verified
+  pixel-identical); 3D trail and spectral-panel colors untouched. Two e2e
+  specs updated to target the new Sheet's accessible structure instead of the
+  old drawer's implementation-detail classes.
 - **2026-07-19** — Shipped v1.5: the 2D Spectral Analysis panel (seven descriptors,
   hover readout, scrubber-synced playhead) plus the Part 0 feature-schema
   versioning system (version stamp + `schema_audit.py` + `migrate_schema.py` +

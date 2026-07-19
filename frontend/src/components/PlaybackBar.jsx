@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Pause, Play } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import Spectrogram from './Spectrogram.jsx'
 
 function fmt(s) {
@@ -50,15 +52,16 @@ export default function PlaybackBar({ audioUrl, duration, spectrogram, playheadS
   return (
     <div className="border-t border-white/10 bg-panel/60 px-4 py-2">
       <div className="flex items-center gap-3">
-        <button
+        <Button
           onClick={togglePlay}
           disabled={disabled}
-          className={'h-9 w-9 shrink-0 grid place-items-center rounded-full ' +
+          size="icon"
+          className={'h-9 w-9 shrink-0 rounded-full ' +
             (disabled ? 'bg-white/5 text-slate-600' : 'bg-white/15 hover:bg-white/25 text-white')}
           title={playing ? 'Pause' : 'Play'}
         >
-          {playing ? '⏸' : '▶'}
-        </button>
+          {playing ? <Pause className="fill-current" /> : <Play className="fill-current ml-0.5" />}
+        </Button>
 
         <span className="text-[11px] tabular-nums text-slate-400 w-10 text-right">
           {fmt(playheadSec)}

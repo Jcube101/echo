@@ -13,10 +13,10 @@ test('samples drawer lists attribution and loads a sample on click', async ({ pa
   await page.goto('/')
 
   await page.getByTitle('Curated example birdcalls').click()
-  const drawer = page.locator('aside', { hasText: 'Sample sounds' })
+  const drawer = page.getByRole('dialog', { name: /Sample sounds/ })
   await expect(drawer).toBeVisible()
 
-  const cards = drawer.locator('.rounded-lg.border')
+  const cards = drawer.getByTitle(/Visualize/)
   await expect(cards.first()).toBeVisible()
   expect(await cards.count()).toBe(3)
 

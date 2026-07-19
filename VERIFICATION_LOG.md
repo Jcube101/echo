@@ -635,3 +635,185 @@ installed in `frontend/node_modules`, so the JS unit layer wasn't run — the pa
 is verified end-to-end via Playwright + a clean `vite build` instead. (5) The
 second 3D scene (Spread/Centroid/Crest cube) was **deliberately deferred**, not
 forgotten.
+
+---
+
+# Session 7 — shadcn/ui component polish (2026-07-19)
+
+Frontend-only session (no backend/extraction/schema/API changes — confirmed via
+`git status` showing zero touched files outside `frontend/` and the two e2e
+specs updated to match the new Sheet markup). Goal: replace raw HTML
+interactive elements with shadcn/ui primitives for real hover/focus/active/
+loading states + toast feedback, without touching the 3D trail's rendering or
+the app's layout/palette.
+
+## Part A — shadcn/ui setup + palette mapping
+`npx shadcn@latest` (v4.13.1) turned out to target Tailwind v4's CSS-first
+`@theme`/`oklch()` engine by default — incompatible with this app's pinned
+Tailwind v3.4 JS-config setup (would have needed a v4 migration, far outside
+"component polish"). **Pinned to `shadcn@2.10.0`** instead (the last
+Tailwind-v3-compatible major), with a hand-written `components.json` (the
+newer CLI's interactive style/preset prompts don't accept non-interactive
+flags for this) — `add` respects an existing `components.json` and skips the
+wizard entirely.
+
+Palette mapped to Echo's **actual existing colors** (computed exact HSL, not
+approximated): `--background`=ink `#0a0a12`, `--card`/`--popover`=panel
+`#12121c`, `--foreground`=base text `#e8e8f0`, `--muted-foreground`=slate-400
+(existing secondary-text convention), `--primary`=indigo-500 `#6366f1`
+(Echo's own pre-existing interactive accent — the Samples "Visualize" button,
+seek-slider accent, and Gallery/Samples "selected" ring were ALREADY this hue;
+confirmed via `grep` before mapping anything), `--destructive`=rose-500
+(existing Stop-button/error red), `--ring`=indigo-400 (focus rings — same
+accent family, doesn't compete with the trail's reserved teal `#3df0c0`).
+`--border`/`--input`/`--muted`/`--accent` are plain white with a **fixed alpha
+baked into `tailwind.config.js`** (`hsl(var(--x) / 0.1)` etc.) so `border-border`
+etc. render as literally the same `bg-white/10`-style overlay Echo already uses
+everywhere, not a new opaque theme color.
+
+**Acceptance:** screenshot after Part A's CSS/config work (before touching any
+component) vs. the pre-session baseline — **0 / 1,024,000 pixels differ**
+(exact `PIL` diff). `shadcn_before_boot_desktop.png` vs
+`shadcn_partA_setup_check.png`.
+
+Missing-dependency gaps in the CLI's installer (silently skipped
+`class-variance-authority`/`clsx`/`tailwind-merge`/`lucide-react` on this
+version) were caught by trying a build and installed directly.
+`tailwindcss-animate` added for the `animate-in`/`slide-in-from-*` utilities
+shadcn's Sheet/Select/Tooltip/DropdownMenu use. `next-themes` (pulled in by the
+generated `sonner.jsx` wrapper, meant for Next.js theme switching) removed and
+replaced with a hardcoded `theme="dark"` — Echo has no light mode.
+
+**Incidental fix (needed to verify Samples in dev):** `/samples` was missing
+from `vite.config.js`'s dev proxy list (pre-existing gap, harmless in
+production since StaticFiles is same-origin there) — added so the Samples
+sheet could actually be tested against the dev server.
+
+## Part B — component replacement
+| Element | Before | After |
+|---|---|---|
+| Upload/Record/Pi mic/Samples/History buttons | raw `<button>` | shadcn `Button` (kept the exact `bg-white/10 hover:bg-white/20` look via an explicit className override — Part A's pixel-identity goal — while gaining real focus-visible rings, disabled state, and a spinner slot) |
+| Duration picker (3/5/10/15/30/60s) | native `<select>` | shadcn `Select` (Radix) |
+| 3D Trail / Spectral Panel switch | hand-rolled `role="tablist"` buttons | shadcn `Tabs` (real Radix tabs; `role="tab"` names unchanged so existing `getByRole('tab', {name})` locators still work) |
+| History drawer | hand-rolled `<aside>` with a CSS translate-x show/hide | shadcn `Sheet` (Radix Dialog: real focus trap, Escape-to-close, backdrop click, `aria-modal`) |
+| Sample library drawer | same hand-rolled pattern | shadcn `Sheet` (left side) + shadcn `Card` for each entry |
+| PlaybackBar play/pause | raw `<button>` with emoji glyphs | shadcn `Button` (icon size) + lucide `Play`/`Pause` — the Seek `<input type=range>` itself is untouched |
+| Spectral-panel hover readout | custom floating div (crosshair-follow) | **kept the custom mechanism** (see below) — restyled onto the same `bg-popover`/`border-border` tokens as the rest of the app, plus a 100ms `animate-in fade-in-0 zoom-in-95` matching shadcn Tooltip's own entrance animation |
+| Toasts | none (silent/ad hoc red banner) | `sonner` via shadcn's `Toaster` wrapper, mounted once in `App.jsx` |
+
+**Deliberately did NOT adopt Radix Tooltip for the panel readout**: Radix
+Tooltip anchors to one fixed trigger element; the panel's readout has to
+follow the mouse continuously across a 1000-unit-wide chart (crosshair
+style), which Tooltip's positioning model can't do. Visual language
+unified via shared tokens instead — noted here rather than silently
+diverging from the brief.
+
+**Toast copy** (plain verbs, matching the button that triggered them):
+`Uploaded` / `{filename}`, `Recorded`, `Captured` / `{n}s from the Pi mic`,
+`Upload failed` / `Recording failed` / `Capture failed` each with the
+specific backend or browser message — a raw `fetch` network failure
+("Failed to fetch"/"NetworkError") is rewritten via a new `friendlyError()`
+helper (`lib/api.js`) into "Couldn't reach the server — check your
+connection and try again." A previously **completely silent** failure was
+fixed along the way: `recorder.start()`'s getUserMedia rejection had no
+catch at the call site at all (an unhandled promise rejection) — now caught
+and surfaced as "Microphone access denied…" or the underlying error.
+
+## Part C — motion, restraint, accessibility floor
+- Sheet slide-in/out and Select/Tooltip fade+zoom: shadcn/Radix defaults via
+  `tailwindcss-animate`, untouched.
+- Tab switch: a restrained one-property fade (`animate-in fade-in-0
+  duration-200`) on a wrapper div around the conditional Scene/AnalysisPanel
+  render — Scene.jsx itself is not modified, so this cannot touch camera
+  state or rendering.
+- Recording feels alive: a small `animate-ping` red dot on the Stop button
+  (Tailwind's built-in utility, no new dependency) + the existing progress
+  bar now has an explicit `transition-[width] duration-200`.
+- **Held back deliberately:** no animation on the toolbar buttons beyond
+  color transitions (already had `transition-colors` via Button's base
+  classes) and no animation added to the Samples/Gallery card list items —
+  per the brief's own restraint warning ("if you find yourself adding
+  animation in more than one or two places beyond what's listed, cut rather
+  than add"), the trail is the one signature visual moment and everything
+  else should stay quiet.
+- `prefers-reduced-motion: reduce` — global CSS override in `index.css`
+  collapsing all animation/transition durations to 0.01ms. **Verified**: with
+  Playwright's `page.emulateMedia({reducedMotion:'reduce'})`, the open
+  Sheet's computed `transition-duration` reads `1e-05s` (vs. its normal
+  300–500ms) — confirms the rule actually applies to Radix's own animate-in
+  classes, not just hand-written CSS.
+- Focus rings — checked by literally tabbing through the toolbar
+  (`shadcn_keyboard_check.mjs`): every focused element (Tabs, all 5 buttons,
+  the Select trigger) shows a `box-shadow` ring in `rgb(129, 140, 248)`
+  (indigo-400, the mapped `--ring`) — confirms the floor is met, not just
+  assumed. Screenshot: `shadcn_keyboard_focus.png`.
+- The AnalysisPanel legend-toggle buttons had **no focus state at all**
+  before this session — added `focus-visible:ring-2 focus-visible:ring-ring`
+  there too (an omission the polish pass exists to catch).
+
+## Verification
+- **Frontend unit tests:** 44/44 passed (`npx vitest run`) — one test
+  (`Gallery.test.jsx` "shows an error state when getHistory rejects")
+  initially broke because it does `vi.mock('../lib/api.js')` (auto-mocks
+  every export including the new `friendlyError`, returning `undefined`);
+  fixed by keeping Gallery/Samples' own inline `err` state on the original
+  plain `e.message || 'Failed to load …'` (unchanged from before) and
+  reserving `friendlyError()` for the new toast copy only — not a hack, a
+  correctly-scoped division: the toast is the new surface, the inline banner
+  is the old one and didn't need the new helper.
+- **E2E (Playwright, 11 specs):** 10 passed. `history-gallery.spec.mjs` and
+  `samples-drawer.spec.mjs` updated to target the new accessible structure
+  (`getByRole('dialog', {name})` + `toBeHidden()` for the closed state,
+  `getByTestId('history-item')`/`getByTitle(/Visualize/)` for card counts)
+  instead of the old implementation-detail selectors (`aside` tag,
+  `.translate-x-full` class, `.rounded-lg.border` class) — those were testing
+  the OLD hand-rolled drawer's internals, not durable behavior, so updating
+  them is a correctness fix that comes with adopting a real Sheet, not scope
+  creep.
+  - **1 pre-existing failure, confirmed NOT a regression:**
+    `recording-fake-device.spec.mjs` fails deterministically (3/3 retries)
+    with "Recording failed / Not supported" — verified by `git stash`-ing
+    every change in this session, rebuilding, and re-running the exact same
+    spec against untouched `main`: **same failure, same message**. This is
+    an environment-specific MediaRecorder/fake-audio-device codec issue on
+    this Chromium/Playwright install, unrelated to anything in this session.
+    Left as-is (fixing it would be backend/tooling work, out of scope) but
+    flagging concretely since my new error-surfacing made a previously
+    *invisible* unhandled-promise-rejection into a *visible* toast — good
+    to distinguish "now visible" from "newly broken."
+- **Pixel-equivalence of the 3D trail specifically** (not just eyeballing):
+  cropped the canvas region (y 95–620, full width) from the final build's
+  boot screenshot and diffed against the pre-session baseline —
+  **0 / 672,000 pixels differ**, even after every Part B/C header/toolbar
+  change landed.
+- Screenshots: `shadcn_before_*` (baseline), `shadcn_partA_setup_check.png`
+  (Part A pixel-equivalence), `shadcn_after_*` (desktop+mobile: samples
+  sheet, trail-loaded, history sheet, spectral panel), `shadcn_toast_*`
+  (failure + success), `shadcn_keyboard_focus.png`, `shadcn_final_boot_*`,
+  `shadcn_public_final.png` (through the tunnel). Zero console/page errors
+  across every check.
+
+## Redeploy
+`npm run build` (dist `index-Y6sShxZz.js` / `index-_5XdbN4F.css`) →
+`sudo -n systemctl restart echo` → `/api/health` ok. Tunnel serves the
+identical asset hashes; live check through `https://echo.job-joseph.com`
+confirms the Samples sheet, Spectral Panel (7 lines), and zero console
+errors in production. `GET /api/schema-audit` unaffected (still 0 stale) —
+confirms this session made no backend/schema changes, as scoped.
+
+**Dependencies added** (`frontend/package.json`): `@radix-ui/react-dialog`,
+`@radix-ui/react-select`, `@radix-ui/react-slot`, `@radix-ui/react-tabs`,
+`@radix-ui/react-tooltip`, `class-variance-authority`, `clsx`, `lucide-react`,
+`sonner`, `tailwind-merge`, `tailwindcss-animate`. New files:
+`frontend/components.json`, `frontend/jsconfig.json`,
+`frontend/src/components/ui/{button,select,sheet,card,tabs,tooltip,sonner}.jsx`,
+`frontend/src/lib/utils.js` (shadcn's `cn()` helper).
+
+**Deviations:** (1) Pinned shadcn CLI to v2.10.0 instead of `@latest` (Tailwind
+v4 incompatibility, see Part A). (2) Radix Tooltip NOT used for the spectral
+panel's hover readout — mechanism kept custom, tokens shared (see Part B).
+(3) Two e2e specs updated to match the new Sheet's accessible structure.
+(4) `vite.config.js` dev proxy gained a `/samples` entry (pre-existing gap,
+needed to verify Samples in dev; harmless in production). (5) One
+pre-existing e2e failure confirmed unrelated to this session via `git stash`
+bisection, left unfixed (out of scope).
