@@ -569,3 +569,69 @@ fix is purely `PYIN_RESOLUTION`. (2) Two real test-upload clips
 end-to-end upload checks — harmless real birdcalls, will age out via retention.
 (3) `samples/` opus + feature JSON committed to git (small product assets) —
 new precedent vs the global audio ignore; gitignore negation added.
+
+---
+
+# Session 6 (v1.5) — Extended Spectral Analysis Panel + feature-schema versioning (2026-07-19)
+
+## Part 0 — feature-schema versioning system
+Designed + built a permanent fix for feature-schema drift (three prior sessions
+changed stored-JSON contents relying on *remembering* to migrate):
+`extraction.FEATURE_SCHEMA_VERSION` (=2) + `FEATURE_FIELDS` are the source of
+truth; every payload stores `schema_version` (JSON **and** `clips.schema_version`,
+added in-place by `db._ensure_columns()` for the pre-existing DB); `schema_audit.py`
+reports current-vs-stale (version **and** key-set), surfaced three ways
+(`python schema_audit.py`, `GET /api/schema-audit`, `tests/test_schema.py`
+SCHEMA-005); `migrate_schema.py` is the one supported migration path. Root-level
+(not gitignored `verification/`). Rule added to CLAUDE.md.
+- **Pre-migration audit (real check, real answer):** `python schema_audit.py`
+  reported **38 stale** (35 history + 3 samples), all `v=None` missing the 7 new
+  fields.
+- **Post-migration audit:** `total=38  current=38  stale=0`. Public endpoint
+  `GET https://echo.job-joseph.com/api/schema-audit` → `{current_version:2,
+  total:38, current:38, stale:0}`. **PASS.**
+
+## Parts A + B — descriptors compute + migration
+`python extraction.py test.wav` → SELF-CHECK **PASS**: all 7 new fields present,
+finite, within their documented fixed ranges (e.g. spread 1137–2476 Hz, crest
+10.9–28.2, contrast 13.1–25.1 dB, slope −6.6e-4…−3.4e-4, flatness 5e-5–0.014,
+hnr −12.5–26.5 dB, tonality 0.67–0.84). Migration (dogfooded through the Part-0
+system) re-extracted + re-stamped all 35 history + 3 sample clips v1→v2. Backend
+suite **95 passed** (incl. new SCHEMA-001..005 and the updated column-set assert).
+60 s extract ≈10 s (was ≈8.5 s; +1.5 s from HPSS), ~10× under the ~100 s edge.
+
+## Part C — the panel (Playwright, desktop + mobile)
+`verification/verify_v1_5.mjs` against `http://localhost:8014` (loads the
+asian-koel sample for rich data + audio, switches to the Spectral Panel tab):
+- **Desktop 1280×800** and **Mobile 390×844**, identical results:
+  - 7 legend labels present (Spectral Spread/Crest/Contrast/Slope/Flatness/HNR/
+    Tonality); 7 stroked `<path>` lines.
+  - **Playhead sync:** teal playhead x = 0 → after scrubbing the transport to 60%,
+    x = 600.2 / 1000 (viewBox) — moves with the shared scrubber state.
+  - **Hover readout:** `t = 10.28s` + every line's value+unit (Spread 3595 Hz,
+    Crest 15.2, Contrast 19.9 dB, Slope −1.05e-4, Flatness 0.0072, HNR 8.0 dB,
+    Tonality 0.74).
+  - **Zero pageErrors, zero consoleErrors.**
+- `v1_5_panel_desktop.png`, `v1_5_panel_mobile.png` — panel with readout + playhead.
+- `v1_5_trail_intact.png` — 3D Trail view unchanged (1 canvas, tab selected, no
+  errors) — additive-only guardrail confirmed.
+- `v1_5_panel_public.png` — panel renders through the tunnel (7 paths, labels, no
+  errors). **PASS.**
+
+## Redeploy
+`npm run build` (dist `index-DvZyzo4M.js`) → `sudo -n systemctl restart echo` →
+`/api/health` ok. Tunnel serves the same asset hash
+(`curl https://echo.job-joseph.com/` → `index-DvZyzo4M.js`). New build + backend
+live and public.
+
+**Deviations:** (1) The prompt says "six" new fields in prose but the legend +
+Part A enumerate **seven** named descriptors (Spread, Crest, Contrast, Slope,
+Flatness, HNR, Tonality) — implemented all seven so nothing named is missing.
+(2) New descriptors stored in physical units (clamped) rather than remapped to
+[−3,3], so the hover readout shows meaningful numbers; frontend normalizes per
+lane against the same fixed ranges. (3) `frontend/src/data/sample.json` regenerated
+(asian-koel, 380 pts) so the panel isn't empty on first boot. (4) `vitest` is not
+installed in `frontend/node_modules`, so the JS unit layer wasn't run — the panel
+is verified end-to-end via Playwright + a clean `vite build` instead. (5) The
+second 3D scene (Spread/Centroid/Crest cube) was **deliberately deferred**, not
+forgotten.

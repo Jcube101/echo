@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import String, Float, DateTime, create_engine
+from sqlalchemy import Integer, String, Float, DateTime, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 # --- Paths --------------------------------------------------------------------
@@ -42,6 +42,11 @@ class Clip(Base):
     duration_s: Mapped[float] = mapped_column(Float)
     feature_path: Mapped[str] = mapped_column(String)  # relative to ROOT
     audio_path: Mapped[str] = mapped_column(String)    # relative to ROOT
+    # Extraction-schema version that produced this clip's stored feature JSON
+    # (Part 0). NULL = a legacy row written before versioning existed → the
+    # schema audit treats it as stale until re-migrated. The JSON payload carries
+    # the authoritative copy; this column is the cheap index the audit reads.
+    schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     def to_summary(self) -> dict:
         return {
@@ -60,3 +65,20 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _ensure_columns()
+
+
+def _ensure_columns() -> None:
+    """Add columns introduced after the table was first created.
+
+    `create_all` only creates missing TABLES, never adds columns to an existing
+    one, so an already-deployed clips table (e.g. the Pi's 35 rows) won't get
+    `schema_version` from the model alone. This adds it in place if missing;
+    existing rows get NULL (stale) until the migration stamps them. Idempotent.
+    """
+    with engine.begin() as conn:
+        cols = [row[1] for row in
+                conn.exec_driver_sql("PRAGMA table_info(clips)").fetchall()]
+        if cols and "schema_version" not in cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE clips ADD COLUMN schema_version INTEGER")

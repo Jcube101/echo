@@ -152,12 +152,14 @@ def test_STO_005_metadata_only_db_stays_small(isolated_backend, audio_factory):
     main, db, storage = isolated_backend
 
     columns = {c.name: c.type.python_type for c in db.Clip.__table__.columns}
-    assert set(columns) == {"id", "created_at", "source_type", "duration_s", "feature_path", "audio_path"}
+    assert set(columns) == {"id", "created_at", "source_type", "duration_s",
+                            "feature_path", "audio_path", "schema_version"}
     assert columns["id"] is str
     assert columns["source_type"] is str
     assert columns["feature_path"] is str
     assert columns["audio_path"] is str
     assert columns["duration_s"] is float
+    assert columns["schema_version"] is int  # metadata int, still no blobs
 
     for i in range(5):
         path = audio_factory.tone(duration=0.5, freq=400 + i * 10, amp=0.5, name=f"c{i}")

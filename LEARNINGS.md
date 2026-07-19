@@ -159,6 +159,96 @@ voiced value (leading gap back-filled with the first voiced value; a fully
 unvoiced clip falls back to a neutral 220 Hz). This keeps the 3D trail a
 continuous line instead of teleporting to 0 Hz on every silent/noisy frame.
 
+### Session 6 (v1.5) — feature-schema versioning + extended spectral panel (2026-07-19)
+
+**Part 0 — permanent fix for feature-schema drift (the real point of the session).**
+Three prior sessions each changed what's inside a stored feature JSON and relied
+on *remembering* to re-run a migration — discipline, not design. Fixed with a
+stamped-version + verifiable-audit system:
+- `extraction.FEATURE_SCHEMA_VERSION` (now `2`) is the single source of truth for
+  "what the current extractor produces". `extraction.FEATURE_FIELDS` is the exact
+  per-frame key tuple it's contracted to emit.
+- Every stored payload records `schema_version` (in the feature JSON **and** the
+  `clips.schema_version` column, added in-place by `db._ensure_columns()` for the
+  already-deployed DB — `create_all` never alters existing tables). Samples carry
+  it in their JSON (no DB row).
+- `schema_audit.py` is a **real check, not a claim**: it reads every stored clip
+  (history + samples) and reports current vs. stale, where *current* ⇔
+  `version == FEATURE_SCHEMA_VERSION` **and** key-set `== FEATURE_FIELDS`. The
+  second condition catches field drift even if someone changes fields but forgets
+  to bump the version. Three surfaces: `python schema_audit.py` (CLI, exit 1 if
+  stale), `GET /api/schema-audit` (JSON), `tests/test_schema.py` (SCHEMA-005 goes
+  red on the Pi the moment extraction changes without a migration).
+- `migrate_schema.py` is the ONE supported migration path: re-extract from on-disk
+  audio, rewrite JSON with the stamp, update the DB column — history + samples,
+  idempotent. The old `verification/migrate_features.py` now just delegates to it.
+- Why root-level, not `verification/`: that dir is gitignored, so a "permanent
+  system" living there wouldn't survive a fresh checkout. `schema_audit.py` +
+  `migrate_schema.py` + `tests/test_schema.py` are committed at the repo root.
+- **Workflow enforced in CLAUDE.md:** change extraction output → bump
+  `FEATURE_SCHEMA_VERSION` → `python migrate_schema.py` → `python schema_audit.py`
+  must report zero stale. Dogfooded immediately: the six-new-field migration was
+  the first run through this system (38 clips: 35 history + 3 samples, all v1→v2).
+
+**Part A — extended spectral descriptors (formulas + judgment calls).** Six new
+per-frame descriptors + a composite, all from ONE shared STFT (`_extended_
+descriptors`), held through quiet frames on the same `loud` mask as the spatial
+axes (silence makes flatness/HNR wild), clamped to fixed ranges, ~100 ms smoothed:
+- **Spectral Spread** — `librosa.feature.spectral_bandwidth` (Hz).
+- **Spectral Crest** — peak-magnitude ÷ RMS-magnitude of the frequency bins per
+  frame (RMS = `sqrt(mean(S²))`); no librosa helper. A pure tone is peaky (~high),
+  flat noise ~1.
+- **Spectral Contrast** — `librosa.feature.spectral_contrast` is (n_bands+1)×T;
+  reduced to one scalar per frame by the **mean across all bands** (a simple,
+  symmetric summary of overall peak/valley structure).
+- **Spectral Slope** — direct linear-regression slope of `log(magnitude)` vs
+  frequency (Hz) per frame: `(Σ f'·(logS - meanlogS)) / Σ f'²` with `f' = f - mean(f)`.
+  Negative = energy tilts down toward high frequencies (the usual case).
+- **Spectral Flatness** — `librosa.feature.spectral_flatness` (0..1).
+- **HNR** — via `librosa.decompose.hpss` on the complex STFT (NOT
+  `librosa.effects.hpss`, which returns time-domain signals needing a second STFT
+  to get per-frame values). Frame-aligned harmonic H / percussive P magnitudes →
+  `10·log10(Σ|H|² / Σ|P|²)` dB.
+- **Tonality** — no canonical formula, so defined here as a composite in [0,1]:
+  `0.6·(1 − flatness_norm) + 0.4·hnr_norm`, where `_norm` maps each into 0..1 over
+  its fixed range. High when the spectrum is both peaky (low flatness) and periodic
+  (high HNR). Weights `TONALITY_FLAT_W/HNR_W` are tunables.
+- **Reused, not recomputed:** the panel exposes existing `timbre` as "Spectral
+  Centroid" and `motion` as ≈"Spectral Flux" in the trail's own view; the JSON
+  field names stay `timbre`/`motion` for backward compat with the 3D trail and all
+  stored data.
+
+**Fixed ranges (derived from the real corpus, ~5.7k loud frames across all history
++ sample clips; percentiles → clamp bounds), in `extraction.py` as tunables and
+mirrored in `frontend/src/lib/panelFeatures.js`:** spread `(0, 4000)` Hz
+(p95≈3543), crest `(1, 30)` (p99≈26), contrast `(10, 35)` dB, slope `(-0.001,
+0.0002)`, flatness `(0, 0.25)` (p99≈0.11 — tighter than the natural 0..1 so the
+lane has visible range), hnr `(-30, 65)` dB (p5≈-28/p99≈62; silence artifacts to
+-126 dB are held+clamped away), tonality `(0, 1)`. Stored in **physical units**
+(clamped) so the panel's hover readout shows a meaningful number; the frontend
+normalizes each lane against the same range. Same fixed-scale-with-clamping
+philosophy as the session-5 world box — comparable across the gallery.
+
+**Part C — the panel.** Second view via a header tab toggle (`3D Trail` /
+`Spectral Panel`), NOT merged into the 3D scene. SVG multi-line chart with a fixed
+viewBox stretched to the container (`preserveAspectRatio="none"` +
+`vector-effect: non-scaling-stroke` keeps line weight crisp under the stretch);
+text/legend/readout are HTML over the SVG so they never distort. Shared time state:
+the teal playhead line is driven by the same `playheadSec` App state as the
+scrubber + spectrogram (dragging the transport moves all three); a separate dashed
+cursor + tooltip gives the required per-line hover readout (physical value + unit).
+Colours are the dataviz reference categorical palette (dark steps), validated
+colourblind-safe on this surface; legend + readout name every line so identity is
+never colour-alone. Legend chips toggle individual lines. Default `sample.json`
+regenerated (asian-koel, 380 pts) so the panel isn't empty on first boot.
+
+**Deliberately deferred (NOT forgotten):** the reference's second 3D scene
+(Spread/Centroid/Crest cube) is a clean follow-up, out of scope this session per
+the prompt. The data it needs already ships in every v2 payload.
+
+**Timing:** the extra STFT + `decompose.hpss` add ~1.5 s to a 60 s clip (≈8.5 s →
+≈10 s full `extract_features`), still ~10× under Cloudflare's ~100 s edge limit.
+
 ---
 
 ## Gotchas & platform quirks

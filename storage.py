@@ -25,7 +25,8 @@ from pathlib import Path
 
 from db import (AUDIO_DIR, FEATURES_DIR, ROOT, RETENTION_LIMIT, Clip,
                 SessionLocal)
-from extraction import MAX_DURATION_S, compute_spectrogram, extract_features
+from extraction import (FEATURE_SCHEMA_VERSION, MAX_DURATION_S,
+                        compute_spectrogram, extract_features)
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB (locked)
 
@@ -107,9 +108,12 @@ def process_audio(raw_path: Path, source_type: str) -> dict:
 
         _to_opus(raw_path, audio_out)
         # Saved as a combined payload so the strip + trail travel together and
-        # get cleaned up by the same retention rule (one file per clip).
+        # get cleaned up by the same retention rule (one file per clip). The
+        # schema_version stamp (Part 0) records which extraction produced this
+        # payload so the audit can tell current from stale without git archaeology.
         feat_out.write_text(json.dumps(
-            {"features": features, "spectrogram": spectrogram}))
+            {"schema_version": FEATURE_SCHEMA_VERSION,
+             "features": features, "spectrogram": spectrogram}))
 
         # effective duration = min(actual, cap) since extraction truncates at cap
         eff_duration = min(duration, MAX_DURATION_S)
@@ -119,6 +123,7 @@ def process_audio(raw_path: Path, source_type: str) -> dict:
                 id=clip_id,
                 source_type=source_type,
                 duration_s=eff_duration,
+                schema_version=FEATURE_SCHEMA_VERSION,
                 # os.path.relpath (not Path.relative_to) so this still works
                 # when DATA_DIR has been redirected outside ROOT (ECHO_DATA_DIR,
                 # test-enablement seam) — it emits a ../-relative path instead

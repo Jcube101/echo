@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import Scene from './components/Scene.jsx'
+import AnalysisPanel from './components/AnalysisPanel.jsx'
 import Controls from './components/Controls.jsx'
 import PlaybackBar from './components/PlaybackBar.jsx'
 import Gallery from './components/Gallery.jsx'
@@ -22,6 +23,7 @@ export default function App() {
   const [samplesOpen, setSamplesOpen] = useState(false)
   const [sampleMeta, setSampleMeta] = useState(null) // attribution when a sample is loaded
   const [historyKey, setHistoryKey] = useState(0) // bump to refresh the gallery
+  const [view, setView] = useState('trail') // 'trail' (3D) | 'panel' (spectral)
 
   const busy = status === 'processing'
 
@@ -77,6 +79,30 @@ export default function App() {
             sound made visible — pitch × timbre × motion
           </span>
         </div>
+
+        {/* View toggle: the 3D trail (primary) vs. the v1.5 spectral panel —
+            a genuinely separate view, not merged into the 3D scene. */}
+        <div className="flex items-center rounded-md bg-white/5 p-0.5 text-sm" role="tablist" aria-label="View">
+          <button
+            role="tab"
+            aria-selected={view === 'trail'}
+            onClick={() => setView('trail')}
+            className={'px-3 py-1.5 rounded font-medium transition ' +
+              (view === 'trail' ? 'bg-white/15 text-white' : 'text-slate-400 hover:text-slate-200')}
+          >
+            3D Trail
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === 'panel'}
+            onClick={() => setView('panel')}
+            className={'px-3 py-1.5 rounded font-medium transition ' +
+              (view === 'panel' ? 'bg-white/15 text-white' : 'text-slate-400 hover:text-slate-200')}
+          >
+            Spectral Panel
+          </button>
+        </div>
+
         <div className="ml-auto flex items-center gap-2">
           <Controls busy={busy} onStatus={onStatus} onResult={onResult} />
           <button
@@ -102,7 +128,18 @@ export default function App() {
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
       >
-        <Scene features={features} highlightIndex={highlightIndex} />
+        {view === 'trail' ? (
+          <Scene features={features} highlightIndex={highlightIndex} />
+        ) : (
+          <div className="absolute inset-0 bg-ink">
+            <AnalysisPanel
+              features={features}
+              duration={duration}
+              playheadSec={playheadSec}
+              onSeek={setPlayheadSec}
+            />
+          </div>
+        )}
 
         {/* Drag overlay */}
         {dragOver && (
@@ -130,7 +167,8 @@ export default function App() {
         )}
 
         <div className="absolute bottom-3 left-3 text-[11px] text-slate-400 bg-panel/70 rounded px-2 py-1 backdrop-blur">
-          {features.length} points{clipId ? ` · clip ${clipId}` : ' · sample'} · drag to orbit
+          {features.length} points{clipId ? ` · clip ${clipId}` : ' · sample'}
+          {view === 'trail' ? ' · drag to orbit' : ' · hover for values'}
         </div>
 
         {/* Attribution credit while a curated sample is loaded (required for the

@@ -27,7 +27,7 @@ this Pi.
 |---|---|
 | v1 — Core Product (M1–M9) | ✅ Shipped |
 | v1.x — Polish | 🚧 In progress (1 of 4 items started) |
-| v1.5 — Extended Spectral Analysis Panel | 📋 Planned |
+| v1.5 — Extended Spectral Analysis Panel | ✅ Shipped (2D panel; 3D cube deferred) |
 | v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
 
@@ -112,7 +112,25 @@ sound to hand can still see the visualization.
 
 ---
 
-## v1.5 — Extended Spectral Analysis Panel (future) — 📋 Planned
+## v1.5 — Extended Spectral Analysis Panel — ✅ Shipped (session 6, 2026-07-19)
+
+Shipped: a **2D multi-line time-series panel** (the reference's "DB Domain
+Descriptors" view) as a genuinely separate view from the 3D trail, reached by a
+header tab toggle. Seven engineered descriptors — Spectral Spread, Crest,
+Contrast, Slope, Flatness, HNR, and a Tonality composite — plotted against the
+shared time axis, with a hover/tap readout (physical value + unit per line), a
+playhead driven by the same scrubber state as the spectrogram, and per-line legend
+toggles. Works for history + sample clips. Formulas, fixed ranges, and the
+tonality/crest/slope/HNR judgment calls are documented in `LEARNINGS.md`
+(session 6). Also shipped alongside it: the **feature-schema versioning system**
+(Part 0) — see the binding rule in `CLAUDE.md`.
+
+**Deferred (clean follow-up, deliberately not attempted this session):** the
+reference's *second 3D scene* (a Spread/Centroid/Crest cube). The per-frame data
+it would need already ships in every v2 feature payload, so it's purely a frontend
+addition when picked up.
+
+Original scoping notes below are kept for context.
 
 Inspired by a more advanced reference visualization (a multi-panel bird-audio
 analysis tool, screenshot saved by Job) that extracts a much richer feature
@@ -240,6 +258,12 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-07-19** — Shipped v1.5: the 2D Spectral Analysis panel (seven descriptors,
+  hover readout, scrubber-synced playhead) plus the Part 0 feature-schema
+  versioning system (version stamp + `schema_audit.py` + `migrate_schema.py` +
+  `GET /api/schema-audit` + enforced CLAUDE.md rule). Six new fields migrated
+  across all 35 history + 3 sample clips (v1→v2, zero stale). The reference's
+  second 3D (Spread/Centroid/Crest) scene is deliberately deferred.
 - **2026-07-18** — Converted to a living document: added the status legend,
   at-a-glance table, and per-milestone/per-item status (✅/🚧/📋/💡)
   throughout. `ROADMAP.md` maintenance is now shared between Job and Claude

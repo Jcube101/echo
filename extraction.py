@@ -1,9 +1,11 @@
-"""Echo — feature extraction engine (M1).
+"""Echo — feature extraction engine (M1, extended in v1.5).
 
 Standalone, testable: audio file in -> per-frame feature stream out.
 
-Each frame is a dict:
-    {"t": float, "pitch": float, "timbre": float, "motion": float, "amplitude": float}
+Each frame is a dict of the keys in FEATURE_FIELDS (below). The first five are
+the original v1 axes; the rest are the v1.5 extended spectral descriptors that
+feed the 2D multi-line analysis panel (they do NOT touch the 3D trail, which
+still reads only pitch/timbre/motion/amplitude).
 
 - pitch     fundamental frequency (Hz) via librosa.pyin; unvoiced frames
             carry forward the last voiced pitch so the 3D trail stays
@@ -12,13 +14,24 @@ Each frame is a dict:
             perceptually-even scalar range. Chosen over MFCC->PCA because it
             is deterministic, needs no per-clip model fit, is cheap, and maps
             cleanly onto a spatial axis. Rationale in LEARNINGS.md.
+            (Exposed in the v1.5 panel under its proper name "Spectral Centroid".)
 - motion    onset-strength envelope (librosa.onset.onset_strength): how much
             the spectrum is changing frame-to-frame. Chosen over raw RMS-delta
             because it is spectrally aware (a steady loud tone reads as low
             motion; a chirp reads as high) which matches the "motion" idea
-            better. Rationale in LEARNINGS.md.
+            better. Rationale in LEARNINGS.md. (~= Spectral Flux.)
 - amplitude RMS energy per frame, normalized 0..1. Drives point size/color,
             NOT a spatial axis.
+
+v1.5 extended spectral descriptors (physical units, clamped to fixed ranges so
+they stay comparable across clips; see the *_RANGE tunables + LEARNINGS.md):
+- spread    spectral bandwidth (Hz) around the centroid
+- crest     peak/RMS of the magnitude spectrum per frame (tonal peakiness)
+- contrast  mean spectral contrast across sub-bands (dB)
+- slope     spectral tilt: linreg slope of log-magnitude vs frequency
+- flatness  spectral flatness (0..1, geometric/arithmetic mean)
+- hnr       harmonic-to-noise ratio (dB) via spectrogram-domain HPSS
+- tonality  composite score (0..1): inverse flatness blended with HNR
 
 Run directly for a quick self-check:
     python extraction.py test.wav
@@ -91,6 +104,55 @@ MOTION_RAW_RANGE = (0.0, 3.0)     # raw = log1p(onset_strength)  (log1p(19)≈3)
 # --- Smoothing (Part C) -------------------------------------------------------
 SMOOTH_WINDOW = 5      # ~100 ms moving average on the 3 spatial axes
 AMP_SMOOTH_WINDOW = 3  # light smoothing on amplitude (keep transient peaks)
+
+
+# --- Feature-schema versioning (Part 0) ---------------------------------------
+# Bump FEATURE_SCHEMA_VERSION whenever extraction OUTPUT changes in a way that
+# makes a previously-stored feature JSON stale: a new/removed/renamed per-frame
+# field, OR a change to how an existing value is computed/scaled. Every stored
+# feature payload records the version it was produced under (storage.py) and the
+# clips table carries it too (db.py). The schema audit (schema_audit.py /
+# GET /api/schema-audit / tests/test_schema.py) reports how many stored clips are
+# stale, so a forgotten migration turns the test suite red instead of silently
+# drifting. This replaces "remember to re-run the migration" with an enforced,
+# verifiable check. See LEARNINGS.md "Feature-schema versioning".
+#   v1  (implicit, unstamped) — t/pitch/timbre/motion/amplitude + spectrogram
+#   v2  — adds the v1.5 extended spectral descriptors (spread, crest, contrast,
+#         slope, flatness, hnr) + the tonality composite
+FEATURE_SCHEMA_VERSION = 2
+
+# The EXACT per-frame keys the extractor is contracted to emit. The audit flags
+# any stored clip whose key set differs from this — so field drift is caught even
+# if a future session changes the fields but forgets to bump the version above.
+# tests/test_schema.py asserts extract_features actually emits exactly these.
+FEATURE_FIELDS = ("t", "pitch", "timbre", "motion", "amplitude",
+                  "spread", "crest", "contrast", "slope", "flatness",
+                  "hnr", "tonality")
+
+
+# --- Extended spectral descriptors: fixed ranges (Part A, v1.5) ----------------
+# Same fixed-range-with-clamping philosophy as the 3 spatial axes (session 5):
+# every descriptor is clamped to a fixed [lo, hi] derived from the real corpus
+# (all history + sample clips, ~5.7k loud frames) so a value means the same thing
+# in every clip and the panel's lanes are comparable across the gallery. Stored
+# in PHYSICAL units (not remapped to [-3,3]) so the panel's hover readout shows a
+# meaningful number; the frontend normalizes each lane against these same ranges
+# (mirrored in frontend/src/lib/panelFeatures.js). Percentiles that set each
+# bound are in LEARNINGS.md. These are the tunables to adjust by eye.
+SPREAD_HZ_RANGE = (0.0, 4000.0)     # spectral_bandwidth, Hz (p95≈3543, p99≈3833)
+CREST_RANGE = (1.0, 30.0)           # peak/RMS magnitude (p95≈25, p99≈26)
+CONTRAST_DB_RANGE = (10.0, 35.0)    # mean sub-band contrast, dB (p5≈18, p99≈31)
+SLOPE_RANGE = (-0.001, 0.0002)      # log-mag per Hz (mostly small & negative)
+FLATNESS_RANGE = (0.0, 0.25)        # 0..1 flatness; tonal audio hugs 0 (p99≈0.11)
+HNR_DB_RANGE = (-30.0, 65.0)        # harmonic/noise ratio, dB (p5≈-28, p99≈62)
+TONALITY_RANGE = (0.0, 1.0)         # composite, constructed to land in [0,1]
+
+# Tonality composite (a judgment call — no canonical formula; see LEARNINGS.md):
+#   tonality = W_FLAT*(1 - flatness_norm) + W_HNR*hnr_norm     in [0,1]
+# where *_norm is each descriptor mapped 0..1 over its fixed range above. High
+# when the spectrum is peaky (low flatness) AND periodic (high HNR).
+TONALITY_FLAT_W = 0.6
+TONALITY_HNR_W = 0.4
 
 
 def _load_audio(path: str) -> tuple[np.ndarray, int]:
@@ -195,14 +257,74 @@ def _smooth(x: np.ndarray, window: int) -> np.ndarray:
     return np.convolve(xp, kernel, mode="valid")[:x.size]
 
 
+def _extended_descriptors(D: np.ndarray, S: np.ndarray, sr: int) -> dict:
+    """Compute the v1.5 extended spectral descriptors from one shared STFT.
+
+    `D` is the complex STFT, `S = |D|` the magnitude — both computed once by the
+    caller and reused here so we don't pay for extra transforms. Returns a dict
+    of raw (unclamped, unheld) per-frame arrays, each of length S.shape[1]:
+
+    - spread   `librosa.feature.spectral_bandwidth` — 2nd-order spread (Hz) of
+               energy about the centroid.
+    - crest    peak-magnitude / RMS-magnitude per frame (no librosa helper): a
+               pure tone is peaky (high crest), flat noise is ~1. RMS here is the
+               root-mean-square across the frequency bins of one frame.
+    - contrast `librosa.feature.spectral_contrast` is multi-band (n_bands+1 rows
+               of peak-minus-valley dB); reduced to ONE scalar per frame by the
+               MEAN across all bands (documented choice — a simple, symmetric
+               summary of overall peak/valley structure).
+    - slope    spectral tilt: the linear-regression slope of log-magnitude
+               (dependent) vs frequency in Hz (independent), per frame, computed
+               directly (no librosa helper). Negative = energy falls off toward
+               high frequencies (the usual case).
+    - flatness `librosa.feature.spectral_flatness` — geometric/arithmetic mean
+               ratio, 0 (tonal) .. 1 (noise-like).
+    - hnr      harmonic-to-noise ratio (dB). Derived from HPSS: rather than
+               `librosa.effects.hpss` (which returns time-domain signals and
+               would need a second STFT to get per-frame values), we run the
+               spectrogram-domain `librosa.decompose.hpss` on the SAME `D`, which
+               splits it into frame-aligned harmonic H and percussive P
+               magnitudes; HNR = 10*log10(sum|H|^2 / sum|P|^2) per frame.
+    """
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=N_FFT)
+
+    spread = librosa.feature.spectral_bandwidth(
+        S=S, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH)[0]
+
+    s_max = S.max(axis=0)
+    s_rms = np.sqrt(np.mean(S ** 2, axis=0)) + 1e-10
+    crest = s_max / s_rms
+
+    contrast = librosa.feature.spectral_contrast(
+        S=S, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH).mean(axis=0)
+
+    log_s = np.log(S + 1e-10)
+    fc = freqs - float(freqs.mean())
+    denom = float(np.sum(fc ** 2)) or 1.0
+    slope = (fc @ (log_s - log_s.mean(axis=0, keepdims=True))) / denom
+
+    flatness = librosa.feature.spectral_flatness(
+        S=S, n_fft=N_FFT, hop_length=HOP_LENGTH)[0]
+
+    harm, perc = librosa.decompose.hpss(D)
+    e_h = np.sum(np.abs(harm) ** 2, axis=0)
+    e_p = np.sum(np.abs(perc) ** 2, axis=0)
+    hnr = 10.0 * np.log10((e_h + 1e-10) / (e_p + 1e-10))
+
+    return {"spread": spread, "crest": crest, "contrast": contrast,
+            "slope": slope, "flatness": flatness, "hnr": hnr}
+
+
 def extract_features(path: str, max_points: int = MAX_POINTS) -> list[dict]:
     """Extract per-frame features from an audio file.
 
-    Returns a list of {t, pitch, timbre, motion, amplitude} dicts where
-    pitch/timbre/motion are FIXED-SCALE world coordinates in [-WORLD, WORLD]
-    (comparable across clips) and amplitude is 0..1 (per-clip, drives size/glow).
-    ~50 points/sec of the FULL clip; only downsampled beyond `max_points`
-    (=3000, i.e. 60 s). Never returns NaN/Inf.
+    Returns a list of dicts with exactly the FEATURE_FIELDS keys. pitch/timbre/
+    motion are FIXED-SCALE world coordinates in [-WORLD, WORLD] (comparable
+    across clips) and amplitude is 0..1 (per-clip, drives size/glow). The v1.5
+    extended descriptors (spread/crest/contrast/slope/flatness/hnr/tonality) are
+    in physical units clamped to their fixed *_RANGE bounds (also comparable
+    across clips). ~50 points/sec of the FULL clip; only downsampled beyond
+    `max_points` (=3000, i.e. 60 s). Never returns NaN/Inf.
     """
     y, sr = _load_audio(path)
     if y.size == 0:
@@ -240,10 +362,17 @@ def extract_features(path: str, max_points: int = MAX_POINTS) -> list[dict]:
         y=y, frame_length=N_FFT, hop_length=HOP_LENGTH,
     )[0]
 
+    # --- extended spectral descriptors (v1.5) ---
+    # One shared STFT feeds all six raw descriptors (see _extended_descriptors).
+    D = librosa.stft(y, n_fft=N_FFT, hop_length=HOP_LENGTH)
+    ext_raw = _extended_descriptors(D, np.abs(D), sr)
+
     # Align to the shortest per-frame array before combining.
-    n = min(len(f0), len(timbre_raw), len(motion_raw), len(rms))
+    n = min(len(f0), len(timbre_raw), len(motion_raw), len(rms),
+            *(len(v) for v in ext_raw.values()))
     f0, voiced_flag = f0[:n], voiced_flag[:n]
     timbre_raw, motion_raw, rms = timbre_raw[:n], motion_raw[:n], rms[:n]
+    ext_raw = {k: v[:n] for k, v in ext_raw.items()}
 
     # Quiet frames HOLD the previous pitch/timbre/motion (no axis collapses to
     # 0 → no spike to origin), while keeping the frame in the timeline.
@@ -264,11 +393,42 @@ def extract_features(path: str, max_points: int = MAX_POINTS) -> list[dict]:
     # amplitude stays per-clip 0..1 (real low energy => small/dim point)
     amplitude = _normalize(rms)
 
+    # --- extended descriptors: hold through quiet frames, then clamp to fixed
+    # ranges (v1.5). Holding on the SAME `loud` mask as the spatial axes keeps
+    # the panel's lines steady during silence instead of chasing the spectral
+    # shape of near-silent noise (which is where HNR/flatness go wild). ---
+    def _held(key: str, fallback: float) -> np.ndarray:
+        return _hold_forward(ext_raw[key], loud, fallback)
+
+    spread = np.clip(_held("spread", 0.0), *SPREAD_HZ_RANGE)
+    crest = np.clip(_held("crest", 1.0), *CREST_RANGE)
+    contrast = np.clip(_held("contrast", CONTRAST_DB_RANGE[0]), *CONTRAST_DB_RANGE)
+    slope = np.clip(_held("slope", 0.0), *SLOPE_RANGE)
+    flatness = np.clip(_held("flatness", 0.0), *FLATNESS_RANGE)
+    hnr = np.clip(_held("hnr", 0.0), *HNR_DB_RANGE)
+
+    # tonality composite (see the TONALITY_* tunables + LEARNINGS.md): blend of
+    # inverse spectral flatness and normalized HNR, in [0, 1].
+    flat_norm = (flatness - FLATNESS_RANGE[0]) / (FLATNESS_RANGE[1] - FLATNESS_RANGE[0])
+    hnr_norm = (hnr - HNR_DB_RANGE[0]) / (HNR_DB_RANGE[1] - HNR_DB_RANGE[0])
+    tonality = np.clip(TONALITY_FLAT_W * (1.0 - flat_norm) + TONALITY_HNR_W * hnr_norm,
+                       *TONALITY_RANGE)
+
     # --- smoothing (Part C): flow the spatial axes; keep amplitude peaks ---
     pitch = _smooth(pitch, SMOOTH_WINDOW)
     timbre = _smooth(timbre, SMOOTH_WINDOW)
     motion = _smooth(motion, SMOOTH_WINDOW)
     amplitude = np.clip(_smooth(amplitude, AMP_SMOOTH_WINDOW), 0.0, 1.0)
+
+    # Same ~100 ms moving average on the extended descriptors, for visual
+    # consistency with the spatial axes. Averaging clamped values stays in range.
+    spread = _smooth(spread, SMOOTH_WINDOW)
+    crest = _smooth(crest, SMOOTH_WINDOW)
+    contrast = _smooth(contrast, SMOOTH_WINDOW)
+    slope = _smooth(slope, SMOOTH_WINDOW)
+    flatness = _smooth(flatness, SMOOTH_WINDOW)
+    hnr = _smooth(hnr, SMOOTH_WINDOW)
+    tonality = _smooth(tonality, SMOOTH_WINDOW)
 
     # Frame times carry the trim offset back so they sit on the ORIGINAL
     # (untrimmed) timeline — the full playback copy still scrub-syncs; the trail
@@ -288,6 +448,14 @@ def extract_features(path: str, max_points: int = MAX_POINTS) -> list[dict]:
             "timbre": round(float(timbre[i]), 4),
             "motion": round(float(motion[i]), 4),
             "amplitude": round(float(amplitude[i]), 4),
+            # v1.5 extended descriptors (physical units, clamped to fixed ranges)
+            "spread": round(float(spread[i]), 2),
+            "crest": round(float(crest[i]), 3),
+            "contrast": round(float(contrast[i]), 3),
+            "slope": round(float(slope[i]), 7),
+            "flatness": round(float(flatness[i]), 5),
+            "hnr": round(float(hnr[i]), 3),
+            "tonality": round(float(tonality[i]), 4),
         })
     return features
 
@@ -379,16 +547,26 @@ def _self_check(path: str) -> int:
     print(f"file: {path}")
     print(f"duration: {dur:.3f} s (analyzed span {span:.3f} s after boundary trim)")
     print(f"point count: {len(feats)}  ({pts_per_sec:.1f} pts/sec over span, cap {MAX_POINTS})")
-    for name in ("t", "pitch", "timbre", "motion", "amplitude"):
+    print(f"schema version: v{FEATURE_SCHEMA_VERSION}")
+    for name in FEATURE_FIELDS:
         mn, mx, mean = stats(name)
-        print(f"  {name:9s} min={mn:10.4f}  max={mx:10.4f}  mean={mean:10.4f}")
+        print(f"  {name:9s} min={mn:12.5f}  max={mx:12.5f}  mean={mean:12.5f}")
 
     # Automated gates. pitch/timbre/motion are now FIXED world coords in
-    # [-WORLD, WORLD]; amplitude is 0..1; density ~50 pts/sec (unless capped).
-    all_vals = [v for name in ("t", "pitch", "timbre", "motion", "amplitude")
-                for v in col(name)]
+    # [-WORLD, WORLD]; amplitude is 0..1; the extended descriptors sit within
+    # their fixed *_RANGE bounds; density ~50 pts/sec (unless capped).
+    all_vals = [v for name in FEATURE_FIELDS for v in col(name)]
     has_bad = any(math.isnan(v) or math.isinf(v) for v in all_vals)
     amin, amax, _ = stats("amplitude")
+
+    # Each extended descriptor -> its documented fixed range (a small epsilon
+    # covers rounding at the clamp edge).
+    ext_ranges = {
+        "spread": SPREAD_HZ_RANGE, "crest": CREST_RANGE,
+        "contrast": CONTRAST_DB_RANGE, "slope": SLOPE_RANGE,
+        "flatness": FLATNESS_RANGE, "hnr": HNR_DB_RANGE,
+        "tonality": TONALITY_RANGE,
+    }
 
     ok = True
     if has_bad:
@@ -399,6 +577,11 @@ def _self_check(path: str) -> int:
             print(f"GATE FAIL: {axis} out of [-{WORLD}, {WORLD}] ({mn}..{mx})"); ok = False
     if not (0.0 <= amin and amax <= 1.0):
         print(f"GATE FAIL: amplitude out of 0..1 ({amin}..{amax})"); ok = False
+    for name, (lo, hi) in ext_ranges.items():
+        mn, mx, _ = stats(name)
+        eps = (hi - lo) * 1e-4 + 1e-9
+        if mn < lo - eps or mx > hi + eps:
+            print(f"GATE FAIL: {name} out of [{lo}, {hi}] ({mn}..{mx})"); ok = False
     if len(feats) > MAX_POINTS:
         print(f"GATE FAIL: point count {len(feats)} > cap {MAX_POINTS}"); ok = False
     if len(feats) < MAX_POINTS and not (44.0 <= pts_per_sec <= 56.0):

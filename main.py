@@ -195,6 +195,16 @@ def health():
     return {"status": "ok"}
 
 
+# --- GET /api/schema-audit ----------------------------------------------------
+# Cheap runtime report of how many stored clips are on the current extraction
+# schema vs stale (Part 0). Imported lazily so the test suite's module-reload
+# (ECHO_DATA_DIR seam) is always reflected.
+@app.get("/api/schema-audit")
+def schema_audit_endpoint():
+    import schema_audit
+    return schema_audit.audit_all()
+
+
 def _rmdir(d: Path) -> None:
     try:
         for p in d.iterdir():

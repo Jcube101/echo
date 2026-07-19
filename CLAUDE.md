@@ -138,6 +138,27 @@ to stay in single-digit seconds — see `LEARNINGS.md`.)
 
 ---
 
+## Feature-Schema Versioning — Binding Rule
+
+Stored feature JSONs are versioned (Part 0, session 6). **Any change to what
+`extract_features`/`compute_spectrogram` output** — a new/removed/renamed
+per-frame field, OR a change to how an existing value is computed, scaled, or
+clamped — **requires, in the same change:**
+
+1. Bump `extraction.FEATURE_SCHEMA_VERSION` (and update `FEATURE_FIELDS` if the
+   per-frame keys changed).
+2. Run `python migrate_schema.py` (re-extracts + re-stamps history **and**
+   samples; this is the only supported migration path — not an ad-hoc script).
+3. Confirm `python schema_audit.py` reports **zero stale** clips.
+
+This is enforced, not just documented: `tests/test_schema.py` (SCHEMA-005) fails
+whenever any stored clip is behind `FEATURE_SCHEMA_VERSION`, and
+`GET /api/schema-audit` reports current-vs-stale at runtime. Do **not** hand-edit
+stored feature JSONs or migrate with a one-off script — go through
+`migrate_schema.py` so the version stamp and DB column stay consistent. The audit
++ migration runner live at the repo root on purpose (`verification/` is
+gitignored). See `LEARNINGS.md` "Session 6 — feature-schema versioning".
+
 ## Other Standing Guardrails
 
 - No Docker, no Kubernetes — bare-metal systemd only
