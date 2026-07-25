@@ -202,8 +202,8 @@ def test_STO_007_duration_tolerance_and_effective_duration(isolated_backend, aud
 def test_STO_008_sample_library_immune_to_retention(isolated_backend, audio_factory, monkeypatch):
     """After churning enough clips through process_audio to trigger multiple
     evictions, every samples/audio + samples/features file still exists and
-    list_samples() still returns all 3 — samples are never `clips` rows *by
-    construction*, so eviction can never see them.
+    list_samples() still returns all entries — samples are never `clips`
+    rows *by construction*, so eviction can never see them.
 
     CLAUDE.md locked: "Sample library exception … never a clips DB row,
     never subject to the 50-entry retention rule"; LEARNINGS.md Part D.
@@ -212,7 +212,7 @@ def test_STO_008_sample_library_immune_to_retention(isolated_backend, audio_fact
     monkeypatch.setattr(storage, "RETENTION_LIMIT", 2)
 
     before = samples_lib.list_samples()
-    assert len(before) == 3
+    assert len(before) == 14
     before_ids = {s["id"] for s in before}
 
     for i in range(6):

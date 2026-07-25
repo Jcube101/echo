@@ -8,8 +8,16 @@ import { getSamples, getSample, friendlyError } from '../lib/api.js'
 
 // Left-side sheet of curated example clips (distinct from the right-side
 // personal History). Each card carries visible attribution — species, recordist,
-// license, and a link back to the Xeno-canto source — because these are
-// CC BY-NC-SA recordings the app publishes publicly. Clicking loads the clip.
+// license, and a link back to the source (Xeno-canto or Freesound) — because
+// these are Creative Commons recordings the app publishes publicly. Clicking
+// loads the clip.
+const SOURCE_LABEL = {
+  'xeno-canto': (s) => `Xeno-canto XC${s.xc_id}`,
+  freesound: (s) => `Freesound #${s.freesound_id}`,
+}
+function sourceLabel(s) {
+  return (SOURCE_LABEL[s.provider] || SOURCE_LABEL['xeno-canto'])(s)
+}
 export default function Samples({ open, onClose, currentId, onLoaded, onStatus }) {
   const [items, setItems] = useState([])
   const [loadingId, setLoadingId] = useState(null)
@@ -51,10 +59,10 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
       >
         <SheetHeader className="px-4 py-3 border-b border-border space-y-1">
           <SheetTitle className="text-sm font-semibold flex items-center gap-2 text-slate-100">
-            <span>🐦</span> Sample sounds
+            <span>🔊</span> Sample sounds
           </SheetTitle>
           <SheetDescription className="text-[11px] text-slate-500">
-            Curated birdcalls — no upload needed. Tap one to visualize it.
+            Curated example sounds — no upload needed. Tap one to visualize it.
           </SheetDescription>
         </SheetHeader>
 
@@ -76,7 +84,9 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-slate-100">{s.species}</div>
-                    <div className="text-[11px] italic text-slate-500">{s.sci_name}</div>
+                    {s.sci_name && (
+                      <div className="text-[11px] italic text-slate-500">{s.sci_name}</div>
+                    )}
                   </div>
                   <Button
                     onClick={() => pick(s.id)}
@@ -101,7 +111,7 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
                     <span className="text-slate-600">·</span>
                     <a href={s.source_url} target="_blank" rel="noopener noreferrer"
                        className="text-indigo-300 hover:text-indigo-200">
-                      Xeno-canto XC{s.xc_id} ↗
+                      {sourceLabel(s)} ↗
                     </a>
                   </div>
                 </div>
@@ -111,8 +121,8 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
         </div>
 
         <div className="px-4 py-2 border-t border-border text-[10px] text-slate-600">
-          Recordings © their recordists, via xeno-canto.org. Reused under the
-          Creative Commons licenses shown.
+          Recordings © their recordists, via xeno-canto.org and freesound.org.
+          Reused under the Creative Commons licenses shown per clip.
         </div>
       </SheetContent>
     </Sheet>

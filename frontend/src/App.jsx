@@ -114,9 +114,9 @@ export default function App() {
           <Button
             onClick={() => setSamplesOpen(true)}
             className="bg-white/10 hover:bg-white/20 text-slate-100"
-            title="Curated example birdcalls"
+            title="Curated example sounds"
           >
-            🐦 Samples
+            🔊 Samples
           </Button>
           <Button
             onClick={() => setGalleryOpen(true)}
@@ -176,16 +176,18 @@ export default function App() {
         </div>
 
         {/* Attribution credit while a curated sample is loaded (required for the
-            publicly-served CC BY-NC-SA recordings) */}
+            publicly-served Creative Commons recordings) */}
         {sampleMeta && (
           <div className="absolute bottom-3 right-3 max-w-[70vw] text-[11px] bg-panel/80 rounded-md px-3 py-2 backdrop-blur border border-white/10">
-            <span className="text-slate-200 font-medium">🐦 {sampleMeta.species}</span>
+            <span className="text-slate-200 font-medium">🔊 {sampleMeta.species}</span>
             <span className="text-slate-500"> — rec. {sampleMeta.recordist} · </span>
             <a href={sampleMeta.license_url} target="_blank" rel="noopener noreferrer"
                className="text-slate-400 underline decoration-dotted hover:text-slate-200">{sampleMeta.license}</a>
             <span className="text-slate-500"> · </span>
             <a href={sampleMeta.source_url} target="_blank" rel="noopener noreferrer"
-               className="text-indigo-300 hover:text-indigo-200">Xeno-canto ↗</a>
+               className="text-indigo-300 hover:text-indigo-200">
+              {sampleMeta.provider === 'freesound' ? 'Freesound' : 'Xeno-canto'} ↗
+            </a>
           </div>
         )}
       </main>

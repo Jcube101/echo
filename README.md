@@ -15,11 +15,14 @@ Four ways to get audio in:
    is the primary mobile use case.
 3. **Pi USB mic capture** — trigger a recording on the Pi itself for local
    testing.
-4. **Sample library** — no audio needed: the built-in “🐦 Samples” drawer has
-   one curated birdcall per species (Asian Koel, Common Myna, Rose-ringed
-   Parakeet) so anyone can see the visualization immediately. These are
-   permanent (never rotated out by history retention) and each shows its
-   Xeno-canto recordist, license, and source link.
+4. **Sample library** — no audio needed: the built-in “🔊 Sample sounds”
+   drawer has 14 curated clips — 3 birdcalls from Xeno-canto (Asian Koel,
+   Common Myna, Rose-ringed Parakeet) plus 11 other animal sounds from
+   Freesound (Lion, Wolf, Cow, Dog, Cat, Frog, Cricket, Pig, Red Deer,
+   Bullfrog, Camel), chosen to spread across the pitch/timbre/motion range
+   a birds-only library couldn't show. These are permanent (never rotated
+   out by history retention) and each shows its recordist, license, and a
+   source link back to whichever of the two providers it came from.
 
 Every path funnels through one extraction engine (`librosa`) that produces a
 per-frame feature stream, which the React + Three.js frontend renders as a

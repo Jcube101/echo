@@ -333,6 +333,60 @@ restyled it onto the same `bg-popover`/`border-border` tokens (+ a matching
 `animate-in fade-in-0 zoom-in-95` entrance) so it *looks* consistent with the
 Tooltip elsewhere in the app without pretending to *be* one.
 
+### Sessions 8–9 — sample library: multi-provider expansion + empirical coverage-fill (2026-07-25)
+
+**Sample storage/attribution pattern extended to a second provider, not
+replaced.** Session 5's `samples/` store (audio + features + `samples.json`
+manifest, never a `clips` DB row, immune to retention — see Part D above)
+was built assuming one source (Xeno-canto). Adding Freesound as a second
+source meant the manifest schema needed a way to say *which* provider and
+*which* provider-specific id a given entry came from, without breaking the
+3 existing Xeno-canto entries or inventing a parallel structure. Fix: two
+new manifest fields, additive only — `provider` (`"xeno-canto"` /
+`"freesound"`) and the provider-specific id (existing `xc_id`, new
+`freesound_id`, `null` on the entries that don't apply). `samples.py`'s
+`_SUMMARY_KEYS` and the frontend (`Samples.jsx`/`App.jsx`) both key off
+`provider` to pick the right source-link label and copy, defaulting to
+`xeno-canto` when the field is absent — so the 3 original entries never
+needed to be rewritten, just tagged. New sibling script
+`verification/fetch_freesound_samples.py` owns the Freesound side
+(download preview → transcode to opus → merge into `samples.json`);
+`verification/seed_samples.py` still owns the Xeno-canto side, untouched.
+Both funnel through the same `migrate_schema.py` for feature extraction +
+schema-version stamping — no parallel migration path was created.
+
+**Reject imitation/synthesized clips before download, not after — this is
+now a standing practice, not a one-off catch.** Session 8's wolf-howl
+search surfaced two top-rated results that were human vocal imitations
+("Got tired of not being able to find any so I made my own" /
+"Pretending sth like wolf howling"). Session 9's broader candidate search
+caught three more of the same category by the same method — read the
+description before trusting the title/tags — including one explicitly
+AI-generated clip ("This sound was generated using an AI model
+(elevenlabs). No real-world recording was used.") and a hose-and-funnel
+"elephant trumpet" prop imitation. Two-for-two across two independent
+sessions means this isn't an edge case to special-case around: **any
+Freesound sourcing pass for this library must read the full description of
+a candidate before downloading it**, not just the title/tags/rating —
+tags and star ratings don't distinguish a real recording from a
+convincing fake or a joke upload.
+
+**New tool: `verification/coverage_gap.py` — quantifies which regions of
+the fixed `[-3, 3]` world box are genuinely unoccupied, per axis.** Built
+for Session 9 because "the pitch axis has a gap" turned out to be a
+guess worth checking, not a fact: the assumption going in (from a prior
+read of the data) was that the empty region was the *middle* of the pitch
+axis. Binning every stored frame into 0.25-wide bins and checking for
+zero-count bins showed the real, much bigger gap was actually the **low
+end** (pitch < world -1.5, i.e. under ~150 Hz) — the middle was already
+well covered. Selection then proceeded from the *measured* gap, not the
+assumed one: 11 real candidates were downloaded and run through
+`extract_features` directly, combinations were tested against the same
+occupancy check, and only the 4 that measurably closed the empty range
+were kept (pitch coverage went from 4.46 to 5.99 of the box's 6.0-wide
+range). Reusable for any future "does this fill a real gap" question on
+any of the three axes, not sample-library-specific.
+
 ---
 
 ## Gotchas & platform quirks

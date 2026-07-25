@@ -40,6 +40,36 @@ describe('Samples', () => {
     expect(sourceLink).toHaveAttribute('href', koel.source_url)
   })
 
+  const lion = {
+    id: 'lion-roar',
+    species: 'Lion',
+    sci_name: 'Panthera leo',
+    recordist: 'craigsmith',
+    license: 'CC0 1.0',
+    license_url: 'https://creativecommons.org/publicdomain/zero/1.0/',
+    source_url: 'https://freesound.org/people/craigsmith/sounds/675442/',
+    provider: 'freesound',
+    freesound_id: 675442,
+    duration_s: 13.2,
+  }
+
+  it('renders a Freesound-provider sample with its own source link, no sci_name line when absent', async () => {
+    const cricket = { ...lion, id: 'cricket-chirp', species: 'Cricket', sci_name: null, freesound_id: 341855 }
+    api.getSamples.mockResolvedValue([lion, cricket])
+    render(<Samples open currentId={null} onLoaded={vi.fn()} onClose={vi.fn()} onStatus={vi.fn()} />)
+
+    expect(await screen.findByText('Lion')).toBeInTheDocument()
+    expect(screen.getByText('Panthera leo')).toBeInTheDocument()
+
+    const sourceLink = screen.getByRole('link', { name: /Freesound #675442/ })
+    expect(sourceLink).toHaveAttribute('href', lion.source_url)
+
+    expect(await screen.findByText('Cricket')).toBeInTheDocument()
+    expect(screen.queryByText('Panthera leo')).toBeInTheDocument() // lion's, unaffected
+    // cricket has no sci_name — its card shouldn't render an empty italic line
+    expect(screen.getAllByText(/^Panthera leo$/)).toHaveLength(1)
+  })
+
   it('shows an empty state with no samples', async () => {
     api.getSamples.mockResolvedValue([])
     render(<Samples open currentId={null} onLoaded={vi.fn()} onStatus={vi.fn()} />)

@@ -817,3 +817,368 @@ panel's hover readout — mechanism kept custom, tokens shared (see Part B).
 needed to verify Samples in dev; harmless in production). (5) One
 pre-existing e2e failure confirmed unrelated to this session via `git stash`
 bisection, left unfixed (out of scope).
+
+---
+
+# Session 8 — sample library expansion: 3 birds → 10 clips across the box (2026-07-25)
+
+Goal: the 3 existing samples were all birds clustering in the high-pitch
+region, so the Sample library never demonstrated most of the 3D box's
+range. Added 7 non-bird clips (Lion, Wolf, Cow, Dog, Cat, Frog, Cricket)
+from the Freesound API, following the exact existing storage pattern
+(`samples/` audio+features+manifest, never a `clips` DB row, never subject
+to the 50-entry retention rule, schema-versioned via `migrate_schema.py`).
+
+## Part A — sourcing (Freesound API)
+
+Searched via `https://freesound.org/apiv2/search/text/`, one query per
+species, judged on: clean/close single-animal recording over noisy field
+ambience, and (where relevant) a real recording over the sound-design/
+horror/human-vocal-imitation clips that dominate results for terms like
+"wolf howl" (verified by reading full descriptions — e.g. two of the
+top-rated "wolf howl" results turned out to be human vocal imitations
+("Got tired of not being able to find any so I made my own" / "Pretending
+sth like wolf howling"), explicitly rejected). All 7 chosen clips are real
+single-animal recordings:
+
+| Species | Sound | Recordist | License | Duration | Freesound ID |
+|---|---|---|---|---|---|
+| Lion | "S01-22_Lion snarls & roars 3.wav" | craigsmith | CC0 1.0 | 13.2s | 675442 |
+| Wolf | "S28-04 Wolf howls with reverb.wav" | craigsmith | CC0 1.0 | 23.2s | 675445 |
+| Cow | "Cow moo #5" | spurioustransients | CC0 1.0 | 13.9s | 513563 |
+| Dog | "Dog - Bark 1" | Vrymaa | CC0 1.0 | 5.5s | 737885 |
+| Cat | "Animal - Cat Meow" | Vrymaa | CC0 1.0 | 11.0s | 756236 |
+| Frog | "R28-18-Single Frog Chirps.wav" | craigsmith | CC0 1.0 | 14.1s | 479833 |
+| Cricket | "12ChirpBurst1x.wav" | zimbot | CC BY 4.0 | 5.0s | 89354 |
+
+Source URLs: `https://freesound.org/people/<recordist>/sounds/<id>/` for
+each (exact `url` field from the API response — never guessed). Lion/Wolf/
+Cow/Frog all come from the same craigsmith collection (a digitized vintage
+35mm-optical animal-sound archive, tagged `ANIMALS`/`WILD`) — the most
+credible real-animal source available for those species on Freesound; the
+"with reverb" in the wolf clip's own filename is disclosed as-is, not
+hidden. Frog and Cricket got no `sci_name` (left `null`, not guessed) —
+unlike Lion/Wolf/Cow/Dog/Cat (single unambiguous species), an unlabeled
+frog/cricket recording can't be assigned one of the thousands of candidate
+species without fabricating certainty.
+
+**One swap after measuring output, not just success:** the first Cricket
+pick (341855, "Cricketsample 1.wav") chirps once near the start of its 5.9s
+duration then is silent for the rest — the extraction pipeline's boundary
+silence-trim correctly discarded the true silence, but that left only 38
+analyzed frames, too sparse to read as a trail. Compared frame counts
+directly against alternatives from the same search and swapped to 89354
+("12ChirpBurst1x.wav", same close/clean recording style, 12 chirps across
+its full 5.0s) → 226 frames. Caught by actually inspecting output, exactly
+the kind of check Part C below asks for.
+
+## Part B — integration (exact existing pattern, extended for a 2nd source)
+
+- New script `verification/fetch_freesound_samples.py`, sibling to the
+  existing `verification/seed_samples.py` (which still owns the 3 Xeno-canto
+  birds, untouched). Downloads each preview (`preview-hq-ogg`, no OAuth2
+  needed for preview quality), transcodes to opus with the same `ffmpeg`
+  settings as the existing seeder, and merges entries into
+  `samples/samples.json` (existing 3 entries preserved, only gained a new
+  `provider: "xeno-canto"` field for consistency).
+- Manifest schema extended, additively: every entry now carries `provider`
+  (`"xeno-canto"` / `"freesound"`) plus the provider-specific id
+  (`xc_id` / `freesound_id`, `null` on the entries that don't apply).
+  `samples.py._SUMMARY_KEYS` updated to expose both new fields via `/samples`.
+- Feature extraction deliberately NOT done by the fetch script — it only
+  writes audio + manifest metadata, then `python migrate_schema.py` (the one
+  supported migration path per CLAUDE.md) extracted features and stamped
+  `schema_version` for all 10 samples (+ all 38 history clips) in one run.
+  `python schema_audit.py` confirms **0 stale / 48 current** (28 history +
+  10 samples — history grew from 28 during the session from real traffic on
+  the live public tunnel, unrelated to this work).
+- Frontend (`Samples.jsx`, `App.jsx`) de-hardcoded from xeno-canto/bird-only:
+  drawer header/description, the source-link label (`Xeno-canto XC{id}` vs
+  `Freesound #{id}`, keyed off `provider`), the sci_name line (hidden when
+  null), and the in-view attribution credit overlay. Emoji changed
+  🐦→🔊 throughout (button, drawer header, credit overlay) since the library
+  is no longer birds-only.
+- Tests: added a Freesound-provider render case to `Samples.test.jsx`
+  (source link label + no-sci_name-line assertions); updated
+  `test_API_014_samples_list`/`test_STO_008_...retention` (hardcoded count 3
+  → 10, key-set extended) and `e2e/specs/samples-drawer.spec.mjs` (card count
+  3 → 10, button title text, added a Freesound-link assertion). All updated
+  for the new reality, none loosened to hide a regression.
+
+## Part C — measured spread (the actual acceptance check)
+
+Extracted min/mean/max pitch/timbre/motion per sample from the stored
+feature JSONs (fixed world-scale axes, `[-3, 3]` each, from `extraction.py`):
+
+| id | frames | pitch (min/mean/max) | timbre (min/mean/max) | motion (min/mean/max) |
+|---|---|---|---|---|
+| asian-koel | 1028 | 1.22 / 2.43 / 2.97 | 0.15 / 0.69 / 1.23 | -3.00 / -1.69 / -0.52 |
+| common-myna | 712 | 2.26 / 2.61 / 2.83 | -1.55 / 0.25 / 1.18 | -2.34 / -0.48 / 0.54 |
+| rose-ringed-parakeet | 718 | 2.39 / 2.80 / 2.99 | 0.99 / 1.36 / 1.63 | -2.24 / -1.72 / -0.44 |
+| lion-roar | 627 | -1.34 / -1.29 / -1.00 | -1.00 / -0.33 / 0.34 | -2.51 / -1.69 / 1.23 |
+| wolf-howl | 1041 | -0.43 / -0.04 / 0.56 | -1.35 / -0.98 / -0.44 | -2.37 / -1.98 / -0.09 |
+| cow-moo | 695 | -1.48 / -1.23 / -1.00 | -1.91 / -0.57 / 0.73 | -3.00 / -1.77 / -0.24 |
+| dog-bark | 275 | -0.12 / -0.03 / 0.40 | -2.97 / -0.96 / 0.70 | -2.87 / -1.92 / 1.24 |
+| cat-meow | 542 | 0.10 / 1.61 / 2.28 | -1.34 / 0.69 / 1.33 | -2.49 / -1.52 / 0.93 |
+| frog-croak | 684 | 2.32 / 2.36 / 2.38 | -0.74 / 0.24 / 0.53 | -3.00 / -2.30 / 0.65 |
+| cricket-chirp | 226 | 2.38 / 2.44 / 2.46 | 1.65 / 1.71 / 1.88 | -3.00 / -1.74 / -0.16 |
+
+**Occupied span per axis, birds-only vs all 10** (of the box's max possible
+6.0 per axis):
+
+| axis | birds-only span | all-10 span |
+|---|---|---|
+| pitch | [1.22, 2.99] → 1.76 | [-1.48, 2.99] → **4.46** |
+| timbre | [-1.55, 1.63] → 3.18 | [-2.97, 1.88] → **4.85** |
+| motion | [-3.00, 0.54] → 3.54 | [-3.00, 1.24] → **4.24** |
+
+**Honest read, per the prompt's instruction not to force the a-priori
+low/mid/high grouping:** Lion and Cow land genuinely low-pitch (~-1.2 to
+-1.3, mean), Wolf and Dog land mid (~0), Cat mid-high (1.6) — but Frog and
+Cricket land in the *same* high-pitch band as the birds (2.3–2.5), because
+real frog/cricket calls genuinely are high-frequency; no attempt was made to
+force them lower to fit the expected grouping. The real gain from Frog/
+Cricket is timbre, not pitch: Cricket's timbre (1.65–1.88) exceeds even the
+highest bird (rose-ringed-parakeet, 1.63), extending that axis further than
+the birds went. Motion's *mean* values cluster similarly low across all 10
+samples (steady/sustained calls score low on the onset-strength axis by
+design), but transient peaks in Lion/Dog reach further into positive motion
+(+1.23/+1.24) than any bird's peak (+0.54) — visible as a bright upward
+spike partway through those two trails. Net: genuinely different, non-
+overlapping regions on pitch (new samples occupy the entire negative range
+the birds never touched) and timbre (new min of -2.97 vs birds' -1.55); on
+motion, spread comes from peak/transient extent more than centroid.
+
+## Verification
+
+- **Backend:** `pytest tests/` — 95 passed, 6 deselected (hardware/sudo/
+  tunnel, unattended-safe). `python schema_audit.py` — 48/48 current, 0
+  stale.
+- **Frontend:** `npx vitest run` — 45 passed (8 files), including the new
+  Freesound-provider Samples test.
+- **E2E (Playwright, 11 specs):** 10 passed, including the updated
+  `samples-drawer.spec.mjs` (10 cards, Xeno-canto + Freesound link
+  assertions). **1 pre-existing failure** (`recording-fake-device.spec.mjs`)
+  — same MediaRecorder/fake-audio-device codec issue on this Chromium
+  install documented as unrelated in Session 7's `git stash` bisection;
+  untouched by this session, confirmed still isolated (no other spec
+  affected by the Samples/App changes).
+- **Live app:** `npm run build` → `sudo -n systemctl restart echo` →
+  `GET /samples` returns all 10 entries against the live systemd service on
+  :8014 (confirmed samples themselves need no rebuild — pure data on disk,
+  read fresh per request by `samples.py`; only the UI *code* changes needed
+  the rebuild+restart).
+- **Screenshots** (`verification/sample_expansion_*.png`): drawer showing
+  all 10 cards top-to-bottom (`_drawer_all10.png`, `_drawer_all10_scrolled
+  .png`) with correct per-provider attribution and no stray sci_name line on
+  Frog/Cricket; 4 loaded trails side-by-side-comparable
+  (`_trail_asian-koel.png`, `_trail_lion-roar.png`, `_trail_cow-moo.png`,
+  `_trail_cricket-chirp.png`) visibly occupying different regions of the
+  fixed box — koel top-right (high pitch), lion/cow center-left (low pitch,
+  tight cluster), cricket right side but shifted deeper in timbre than the
+  koel. Zero console/page errors across the whole check.
+
+## Deviations
+
+(1) Frog/Cricket `sci_name` left `null` rather than filled with a guessed
+binomial (see Part A). (2) Swapped the Cricket source clip after measuring
+frame-count output, not the first search result (see Part A). (3) Wolf
+clip's source has "with reverb" in its own filename — used as-is (best real-
+animal option found; the alternative was a purely synthetic/imitation
+clip), disclosed rather than hidden. (4) Cricket ended up CC BY 4.0 (not
+CC0 like the other 6) — attribution shown same as always, no functional
+difference since the UI already always shows recordist+license+link.
+(5) Touched `SPEC.md`/`ROADMAP.md` (species list, drawer emoji/copy,
+`provider` field) in addition to the files the prompt named, since they'd
+otherwise describe a stale 3-bird-only library.
+
+---
+
+# Session 9 — coverage-fill: measurement-driven sample selection (2026-07-25)
+
+Different method from Session 8: instead of picking species names first and
+measuring after, this session quantified the box's actual empty regions
+*first*, then searched broadly, measured every real candidate, and kept
+only the ones that provably closed a gap.
+
+## Part 1 — quantifying the gap (not assuming it)
+
+New `verification/coverage_gap.py`: bins every stored frame (all 10
+existing samples, 6548 frames) into 0.25-wide bins per axis and reports
+which bins have **zero** frames — a true empty range, not just "thin."
+
+**Correction to the task's starting assumption:** the prompt (and this
+session's own read of Session 8) assumed the empty region was "the true
+middle" of the pitch axis. The actual histogram says otherwise — the
+middle (roughly pitch ∈ [-0.5, 0.5]) is well covered by wolf-howl/dog-bark
+(280–520 frames per bin there). The real, much bigger gap is the **low
+end**:
+
+| axis | true empty range(s) | as Hz / physical meaning |
+|---|---|---|
+| pitch | **[-3.00, -1.50)** ← the big one (1.5 units, 0 frames) | below ≈150 Hz — no sample has any pitch content that deep |
+| pitch | (-0.75, -0.50), (0.75, 1.00) | two thin secondary notches (0.25 units each) |
+| timbre | [2.00, 3.00) | very bright/harsh spectral centroid, unreached (cricket topped out at 1.88) |
+| motion | [1.25, 3.00) | extreme transient/onset spikes beyond what lion/dog's peaks reached (1.23/1.24) |
+
+Pitch's low-end gap (1.5 units fully empty) dwarfs every other gap by 5-6×,
+so it was the primary target; timbre/motion gaps were tracked but treated
+as secondary (see Part 4).
+
+## Part 2 — broad candidate search (11 real clips measured)
+
+Searched Freesound for species/sounds plausible for the low end — both the
+task's suggested list (goat, sheep, pig, horse) and additional deep-
+register candidates (deer, bull, camel, elephant, bullfrog) reasoned from
+the ~150 Hz physical target. Same standard as Session 8: read the
+description before trusting a title. Two outright rejects on genuineness
+grounds alone, before even downloading:
+
+- "elephant growls" (810176) — description states outright: *"This sound
+  was generated using an AI model (elevenlabs). No real-world recording was
+  used."* Rejected without downloading.
+- "ElephantTrumpetCall.wav" (52249) — description: *"A hose pipe & a funnel
+  makes a great elephant trumpet call!"* — a prop imitation, not a real
+  elephant. Rejected.
+- "awhoo.mp3" moose call (155150) — description: cast members of a stage
+  play *"making the call"* for a theater production — humans imitating a
+  moose, same category as Session 8's wolf-howl catch. Rejected.
+- "tiger roar" as a query is dominated by monster-growl/vocoder/toilet-
+  paper-tube sound design (checked ~8 top results, all explicitly
+  synthesized or joke recordings) — no credible real tiger roar found; not
+  forced, no tiger sample added.
+- "bison bellow"/"buffalo bellow"/"gorilla grunt" — 0 Freesound results.
+
+The 11 that passed the genuineness check were downloaded and run through
+`extract_features` directly (not estimated):
+
+| candidate | species | pitch (min/mean/max) | timbre (min/mean/max) | motion (min/mean/max) | verdict |
+|---|---|---|---|---|---|
+| pig-grunt (233173) | Pig | -3.00 / -2.92 / -2.80 | -0.90 / -0.32 / 0.46 | -2.40 / -1.27 / 0.46 | **kept** — deepest of all, right at the box edge |
+| deer-roar-b (51060) | Red Deer | -2.13 / -2.02 / -1.85 | -0.03 / 0.37 / 0.62 | -2.76 / -1.78 / -0.11 | **kept** — tight, entirely inside the gap |
+| bullfrog-b (799266) | American Bullfrog | -2.09 / -2.02 / -1.91 | -1.05 / -0.39 / 0.31 | -2.97 / -1.61 / 0.29 | **kept** — tight, entirely inside the gap |
+| camel-grunt (437937) | Camel | -2.72 / -0.99 / 0.12 | -1.12 / -0.55 / 1.04 | -2.66 / -1.78 / 0.28 | **kept** — wide sweep, closes the residual notch between the other three and the already-covered zone |
+| deer-roar-a (104580) | Red Deer | -2.09 / -1.75 / -1.42 | -0.42 / -0.10 / 0.29 | -2.49 / -1.44 / 0.10 | rejected — same species as deer-roar-b, and empirically redundant once deer-roar-b + camel are in (see combo test, Part 3) |
+| bull-bellow (827111) | Cattle (bull) | -2.03 / -1.40 / -0.82 | -0.75 / 0.67 / 1.11 | -2.53 / -1.57 / 0.20 | rejected — mean sits above the gap edge, mostly overlaps cow-moo/lion-roar's already-covered territory |
+| goat-bleat (683259) | Goat | 2.87 / 2.93 / 2.93 | -1.19 / 0.34 / 1.29 | -3.00 / -1.09 / 0.01 | rejected — lands squarely in the most crowded pitch bin in the whole set (2.25–2.50, already 1205 frames) |
+| sheep-bleat (644830) | Sheep | -1.22 / -1.07 / -0.98 | -0.82 / -0.16 / 0.13 | -2.48 / -1.60 / 0.66 | rejected — entirely inside the already-covered -1.5..-1.0 band (lion/cow) |
+| horse-neigh (437110) | Horse | -1.87 / -0.42 / 1.76 | -1.39 / -0.10 / 0.60 | -3.00 / -1.67 / **1.48** | rejected for pitch (mean in crowded mid-zone) — flagged separately: its motion peak (1.48) is the only candidate that exceeds the existing motion ceiling (1.24), a genuine secondary-axis fit not pursued this round (see Part 4) |
+| elephant-call (819668) | Elephant | -1.72 / -1.10 / 0.88 | -1.38 / -0.53 / 0.63 | -3.00 / -1.72 / 0.26 | rejected — mean/max mostly redundant with wolf-howl/dog-bark's already-covered mid band |
+| bullfrog-a (326648) | Bull Frog | 1.11 / 1.23 / 1.28 | -0.65 / -0.05 / 1.63 | -3.00 / -2.05 / 0.24 | rejected — lands in an already-populated pitch bin (1.00–1.50, 294 frames), doesn't touch either empty notch |
+
+## Part 3 — empirical selection (combo-tested, not single-candidate reasoning)
+
+Ran `coverage_gap.py`-equivalent occupancy checks on several combinations
+before finalizing, rather than picking by eye:
+
+| combo | resulting pitch empty range(s) |
+|---|---|
+| baseline (10 existing) | [-3.0,-1.5), (-0.75,-0.5), (0.75,1.0) |
+| + pig, deer-b, bullfrog-b | [-2.75,-2.25), [-1.75,-1.5), (-0.75,-0.5), (0.75,1.0) |
+| + pig, deer-b, bullfrog-b, **deer-a** | [-2.75,-2.25), (-0.75,-0.5), (0.75,1.0) — barely better |
+| + pig, deer-b, bullfrog-b, **camel** | **[-2.5,-2.25)**, (0.75,1.0) — clearly better, closes both the -1.75..-1.5 AND -0.75..-0.5 notches |
+| + all 11 candidates | [-2.5,-2.25) — same residual as the 4-pick combo, for 7 more redundant samples |
+
+Camel strictly dominates deer-roar-a as the 4th pick (closes more, stays a
+distinct species), and adding all 11 candidates gives no further benefit
+over the 4-pick combo on the primary target — confirming "coverage, not
+quantity." **Final selection: pig-grunt, deer-roar (b), bullfrog-croak (b),
+camel-grunt** — 4 additions, re-verified on the actual post-opus-transcode
+stored features (not just the raw preview measurement):
+
+```
+pitch true-empty:  [-3.0,-1.5), (-0.75,-0.5), (0.75,1.0)   ->   (-2.5,-2.25), (0.75,1.0)
+```
+
+The 1.5-unit fully-empty low-pitch band is reduced to a single residual
+0.25-unit notch — an 83% reduction — plus the (-0.75,-0.5) secondary notch
+also closed as a side effect. The remaining (-2.5,-2.25) and (0.75,1.0)
+notches were not chased further: no candidate in the 11 measured reaches
+them cleanly, and forcing a 5th/6th addition for two narrow notches after
+already trying a reasonable set (11 candidates) would trade "coverage" for
+"quantity" — exactly what the task said not to do.
+
+## Selections — full attribution
+
+| Species | Sound | Recordist | License | Duration | Source |
+|---|---|---|---|---|---|
+| Pig | Pig - Grunt 5 (deep) - 96kHz.wav | JarredGibb | CC0 1.0 | 2.5s | freesound.org/…/233173/ |
+| Red Deer | Stag_Recording_Final_For_Freesound.wav | Joan Barnett | Sampling+ 1.0 | 9.6s | freesound.org/…/51060/ |
+| Bullfrog | Frogs - American Bullfrog; Three Frogs Croaking in Pond | TheKingOfGeeks360 | CC0 1.0 | 18.0s | freesound.org/…/799266/ |
+| Camel | G12-05-Camel Grunt.wav | craigsmith | CC0 1.0 | 23.4s | freesound.org/…/437937/ |
+
+`sci_name`: Pig → *Sus scrofa domesticus*; Red Deer → *Cervus elaphus* (the
+API description names "red deer stag" directly, not guessed); Bullfrog →
+*Lithobates catesbeianus* (API title/description say "American Bullfrog"
+explicitly); Camel → left `null` — the source doesn't specify Dromedary vs
+Bactrian, so not guessed (same policy as Frog/Cricket in Session 8).
+
+## Part 4 — before/after occupied range (all samples)
+
+| axis | old-10 span | all-14 span |
+|---|---|---|
+| pitch | [-1.48, 2.99] → 4.46 | **[-3.00, 2.99] → 5.99** (99.8% of the full 6.0-wide box) |
+| timbre | [-2.97, 1.88] → 4.85 | unchanged (none of the 4 additions targeted timbre) |
+| motion | [-3.00, 1.24] → 4.24 | unchanged (none of the 4 additions targeted motion) |
+
+Pitch coverage is now essentially edge-to-edge. Timbre's [2.0,3.0) gap and
+motion's [1.25,3.0) gap remain **open** — flagged honestly rather than
+forced. One candidate (horse-neigh, rejected above for pitch) did show a
+real motion-axis fit (peak 1.48 vs the prior ceiling of 1.24), but pursuing
+it would have meant adding a sample chosen for a different axis than this
+round's stated target, and its pitch profile is otherwise redundant — left
+as a flagged opportunity for a future timbre/motion-focused round rather
+than added opportunistically here.
+
+## Integration
+
+Same pattern as Session 8, extended: `verification/fetch_freesound_samples.py`'s
+`CHOSEN` dict got 4 new entries (round-2 comment block explaining the
+gap-driven rationale); script re-run (idempotent, existing 10 untouched);
+`python migrate_schema.py` extracted features + stamped all 14 samples (+ all
+history clips); `python schema_audit.py` → **all current, 0 stale**. No
+existing sample was touched, removed, or found to be a poor fit on
+re-inspection.
+
+**No frontend code change needed this round** — `Samples.jsx`/`App.jsx`
+already render any number of samples generically (Session 8's
+provider-agnostic rework). Confirmed live: `GET /samples` against the
+already-running systemd service returned all 14 entries with no rebuild or
+restart.
+
+## Verification
+
+- **Backend:** `pytest tests/` — 95 passed, 6 deselected (updated
+  `test_API_014_samples_list`/`test_STO_008_...retention` hardcoded counts
+  10→14, matching Session 8's precedent). `python schema_audit.py` — all
+  current, 0 stale.
+- **Frontend:** `npx vitest run` — 45 passed, unchanged (no frontend code
+  touched this session).
+- **E2E:** `samples-drawer.spec.mjs` card-count assertion updated 10→14;
+  10/11 specs passed, same single pre-existing `recording-fake-device.spec.mjs`
+  failure as every prior session (unrelated MediaRecorder/codec issue on
+  this Chromium install).
+- **Screenshots** (`verification/coverage_fill_*.png`): drawer top/mid/
+  bottom scroll positions showing all 14 cards with correct attribution
+  (including "Sampling+ 1.0" rendering correctly for deer-roar, and Camel's
+  null `sci_name` correctly hiding its italic line); 4 loaded trails
+  (`_trail_pig-grunt.png`, `_trail_deer-roar.png`, `_trail_bullfrog-croak
+  .png`, `_trail_camel-grunt.png`) — pig-grunt sits hard against the pitch
+  axis's far edge (visibly further left than lion/cow from Session 8),
+  camel-grunt's trail visibly sprawls across a wide swath of the box
+  bridging the new low cluster and the previously-covered mid region.
+  Zero console/page errors.
+
+## Deviations
+
+(1) The task's framing assumed the empty region was "the true middle" —
+measurement showed it's actually the **low end**; reported the correction
+plainly rather than forcing candidates to fit the assumed narrative (see
+Part 1). (2) Deer-roar's license is "Sampling+ 1.0" (not CC0/CC BY like
+every other Freesound pick so far) — shown as-is, no functional difference
+since the UI already always renders recordist+license+link. (3) Left
+timbre/motion gaps open rather than adding a candidate chosen for a
+different axis than this round's target (horse-neigh) — flagged as a
+future opportunity instead. (4) Added `verification/coverage_gap.py` as a
+new, reusable tool (not requested by name, but implied by "write a small
+script that reports... which regions... are currently unoccupied").

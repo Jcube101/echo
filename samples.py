@@ -36,7 +36,8 @@ def _load_manifest() -> list[dict]:
 
 # Fields safe to expose in the list (everything except internal file names).
 _SUMMARY_KEYS = ("id", "species", "sci_name", "recordist", "license",
-                 "license_url", "source_url", "xc_id", "duration_s")
+                 "license_url", "source_url", "provider", "xc_id",
+                 "freesound_id", "duration_s")
 
 
 def list_samples() -> list[dict]:

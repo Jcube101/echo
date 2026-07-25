@@ -260,8 +260,9 @@ def test_API_013b_embedded_slash_never_routes_to_a_200(client, path):
 
 
 def test_API_014_samples_list(client):
-    """GET /samples: 3 entries, each with full attribution + metadata, and
-    no feature payload or internal file names.
+    """GET /samples: 14 entries (3 Xeno-canto birds + 11 Freesound animals),
+    each with full attribution + metadata, and no feature payload or
+    internal file names.
 
     SPEC.md: "GET /samples | Curated sample library: list with attribution
     + metadata."
@@ -269,9 +270,10 @@ def test_API_014_samples_list(client):
     res = client.get("/samples")
     assert res.status_code == 200
     items = res.json()
-    assert len(items) == 3
+    assert len(items) == 14
     expected_keys = {"id", "species", "sci_name", "recordist", "license",
-                      "license_url", "source_url", "xc_id", "duration_s"}
+                      "license_url", "source_url", "provider", "xc_id",
+                      "freesound_id", "duration_s"}
     for item in items:
         assert set(item) == expected_keys
         assert "features" not in item
