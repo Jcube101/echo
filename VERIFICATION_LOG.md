@@ -1253,7 +1253,9 @@ Cloudflare's edge was caching `/sw.js` (`cf-cache-status: HIT`,
 after that the edge reports `EXPIRED` (revalidates with the origin) on every
 request. See LEARNINGS.md.
 
-## Not verified (needs Job)
+## Verified by Job on his Android phone (2026-11-12)
 
-- PWA install on Android Chrome, opening at `/app`.
-- `/app?record=1` on a real phone (permission prompt → recording starts).
+- The PWA installs from Android Chrome and opens at `/app`.
+- `/app?record=1` starts recording after the permission prompt.
+
+With that, every "done when" item for S1 is met.

@@ -28,7 +28,7 @@ this Pi.
 | v1 — Core Product (M1–M9) | ✅ Shipped |
 | v1.x — Polish | 🚧 In progress (1 of 4 items started) |
 | v1.5 — Extended Spectral Analysis Panel | ✅ Shipped (2D panel; 3D cube deferred) |
-| v1.6 — Frontend Redesign (Design v2) | 🚧 In progress (S1 of 5 built) |
+| v1.6 — Frontend Redesign (Design v2) | 🚧 In progress (S1 of 5 shipped) |
 | v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
 
@@ -114,9 +114,9 @@ candidates and keeping only the 4 that measurably closed it.
 
 ## v1.x — Polish (after real use, only if wanted) — 🚧 In progress
 
-- 🚧 **In progress** — PWA manifest + install-to-home-screen (the park use case
+- ✅ **Shipped** — PWA manifest + install-to-home-screen (the park use case
   benefits most — follow the stack's standard vite-plugin-pwa pattern).
-  *Absorbed into v1.6 S1 (2026-11-12) — tracked there, not here*
+  *Absorbed into v1.6 S1 and shipped there (2026-11-12)*
 - 📋 **Planned** — iOS Safari MediaRecorder hardening if testing surfaces
   issues (untested on a real device — see `LEARNINGS.md` follow-ups)
 - 🚧 **In progress** — Visual tuning to better match the reference reel.
@@ -211,14 +211,14 @@ trail concept, just on richer axes.
 Full brief, tokens, screen specs, final copy and open decisions: **`DESIGN_V2.md`**.
 Frontend only, plus one backend route; no extraction/schema/storage changes.
 
-- 🚧 **In progress** — S1 Routing + PWA: landing at `/`, app at `/app` (backend
+- ✅ **Shipped** — S1 Routing + PWA: landing at `/`, app at `/app` (backend
   `/app` route above the StaticFiles mount), PWA `start_url: /app`. Absorbs the
-  v1.x PWA item. **Built and live (2026-11-12):** placeholder landing at `/`,
+  v1.x PWA item. **Live (2026-11-12):** placeholder landing at `/`,
   today's app at `/app`, `/app?record=1` auto-starts the recorder,
-  vite-plugin-pwa manifest + service worker. **Left before ✅:** Job to install
-  the PWA on Android Chrome and confirm it opens at `/app`, and to try
-  `/app?record=1` on the phone. The home-screen icon is a placeholder (replace
-  in S2/S4)
+  vite-plugin-pwa manifest + service worker. Job confirmed on his Android
+  phone: the PWA installs and opens at `/app`, and `/app?record=1` starts
+  recording after the permission prompt. The home-screen icon is a
+  placeholder (replace in S2/S4)
 - 📋 **Planned** — S2 Design tokens + desktop app reskin (header, clip sidebar,
   dock + spectrogram, Spectral panel labels). Needs Job's call on trail and
   spectrogram colours first (DESIGN_V2.md D4/D5)
@@ -303,10 +303,10 @@ proves flaky in practice.
 
 ## Changelog
 
-- **2026-11-12** — Built v1.6 S1 (routing + PWA), live behind the tunnel:
+- **2026-11-12** — Shipped v1.6 S1 (routing + PWA), live behind the tunnel:
   `/app` SPA route, placeholder landing at `/`, `/app?record=1`, PWA manifest
-  (`start_url: /app`) + service worker. 🚧 until the Android install is
-  confirmed by Job. The v1.x PWA item is absorbed here.
+  (`start_url: /app`) + service worker. Android install and `?record=1`
+  confirmed by Job on his phone. The v1.x PWA item is absorbed here.
 - **2026-11-11** — Added v1.6 Frontend Redesign (Design v2) as planned, with
   the full brief in `DESIGN_V2.md`. Decided: landing page at `/`, app at `/app`,
   no species/ID language on the site.

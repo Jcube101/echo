@@ -521,8 +521,6 @@ wordmark mark is built.
   real file upload through the identical `uploadAudio → /upload → render` code
   path. **Please test live from an Android phone at `echo.job-joseph.com`**,
   and note any iOS Safari quirks (mime is `audio/mp4` there) in this file.
-- **PWA install (Design v2 S1, 2026-11-12):** on Android Chrome open
-  `echo.job-joseph.com`, install it (menu → "Install app" / "Add to Home
-  screen"), and confirm the home-screen icon opens at `/app`, not the landing
-  page. Also open `echo.job-joseph.com/app?record=1` on the phone and confirm
-  recording starts after the permission prompt. Then mark S1 ✅ in ROADMAP.md.
+- ~~**PWA install (Design v2 S1, 2026-11-12):** install on Android Chrome and
+  confirm it opens at `/app`; confirm `/app?record=1` starts recording.~~
+  **Done — Job confirmed both on his Android phone, 2026-11-12.**
