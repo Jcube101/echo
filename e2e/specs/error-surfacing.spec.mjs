@@ -6,7 +6,7 @@ import { uploadFileAndWait } from '../helpers.mjs'
 // toast with the backend's 422 detail; the app stays usable (previous
 // trail intact).
 test('an undecodable upload shows the error toast and keeps the app usable', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/app')
 
   await page.locator('input[type="file"]').setInputFiles(JUNK_BIN)
   await expect(page.getByText(/Could not read audio/)).toBeVisible({ timeout: 20_000 })

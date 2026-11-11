@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Loader2, Mic, Square, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -20,7 +20,7 @@ const TOOLBAR_BTN = 'bg-white/10 hover:bg-white/20 text-slate-100'
 // Reports work through onStatus('processing'|'idle'|'error', msg) and
 // onResult(apiResponse). Surfaces a toast on every success/failure so nothing
 // fails silently or vaguely (recall the historical "Failed to fetch" issue).
-export default function Controls({ busy, onStatus, onResult }) {
+export default function Controls({ busy, onStatus, onResult, autoRecord = false }) {
   const fileRef = useRef(null)
   const [captureSecs, setCaptureSecs] = useState('5')
   const [inFlight, setInFlight] = useState(null) // 'upload' | 'capture' | null — which button is spinning
@@ -56,6 +56,16 @@ export default function Controls({ busy, onStatus, onResult }) {
       toast.error('Recording failed', { description: msg })
     }
   }
+
+  // autoRecord (/app?record=1): start the recorder once on mount. The ref
+  // keeps StrictMode's dev double-run of effects from starting it twice.
+  // A denied or missing mic surfaces through startRecording's usual toast.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (!autoRecord || autoStarted.current) return
+    autoStarted.current = true
+    startRecording()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function onPick(e) {
     const f = e.target.files?.[0]

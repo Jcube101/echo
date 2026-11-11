@@ -10,7 +10,7 @@ import { trackConsoleErrors, uploadFileAndWait, setRangeValue } from '../helpers
 // axis (aligned to the scrubber)."
 test('spectrogram renders with frequency/time axes and a moving playhead', async ({ page }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
   await uploadFileAndWait(page, TONE_WAV)
 
   const canvases = page.locator('canvas')

@@ -1,6 +1,10 @@
-"""HW-* tests: real hardware, live systemd service, and public-tunnel checks.
+"""Deployment tests: SPA routing (sandboxed) + HW-* live-service checks.
 
-Every test in this file is opt-in only (pytest markers: hardware,
+The DEPLOY-* tests at the top run in a default `pytest` run against the
+isolated sandboxed app from conftest.py (fixture frontend/dist via the
+ECHO_FRONTEND_DIST seam) — they cover the Design v2 /app SPA route.
+
+Every HW-* test in this file is opt-in only (pytest markers: hardware,
 requires_sudo, tunnel) and is EXCLUDED from a default `pytest` run by
 pyproject.toml's addopts. None of them spin up the isolated sandboxed app
 from conftest.py — they talk to the REAL, already-running `echo` service
@@ -45,6 +49,64 @@ def _wait_for_health(base_url: str, timeout_s: float = 30.0) -> bool:
             pass
         time.sleep(1.0)
     return False
+
+
+def test_DEPLOY_001_app_route_serves_spa_html(client_with_frontend):
+    """/app and /app/{anything} return frontend/dist/index.html (Design v2:
+    landing at /, app at /app; /app/* reserved for later deep links)."""
+    c = client_with_frontend
+    for path in ("/app", "/app/anything", "/app/clips/abc123", "/app?record=1"):
+        res = c.get(path)
+        assert res.status_code == 200, path
+        assert res.headers["content-type"].startswith("text/html"), path
+        assert "Echo SPA fixture" in res.text, path
+
+
+def test_DEPLOY_002_app_route_does_not_shadow_api_or_static(client_with_frontend):
+    """With the SPA route registered, /history and /samples still return
+    JSON, / still serves index.html and built assets still serve as files."""
+    c = client_with_frontend
+    for path in ("/history", "/samples", "/api/health"):
+        res = c.get(path)
+        assert res.status_code == 200, path
+        assert res.headers["content-type"].startswith("application/json"), path
+    assert isinstance(c.get("/history").json(), list)
+
+    root = c.get("/")
+    assert root.status_code == 200
+    assert "Echo SPA fixture" in root.text
+
+    asset = c.get("/assets/app.js")
+    assert asset.status_code == 200
+    assert "fixture asset" in asset.text
+
+
+def test_DEPLOY_003_app_route_absent_without_frontend_dist(tmp_path, monkeypatch):
+    """No frontend/dist (dev before a build): the SPA route is not registered,
+    same guard as the StaticFiles mount, so /app is a plain 404 while the API
+    keeps working."""
+    from fastapi.testclient import TestClient
+    from conftest import _reload_backend
+
+    main = _reload_backend(tmp_path / "data", monkeypatch,
+                           frontend_dist=tmp_path / "no-such-dist")
+    with TestClient(main.app) as c:
+        assert c.get("/app").status_code == 404
+        assert c.get("/api/health").status_code == 200
+
+
+def test_DEPLOY_004_service_worker_served_no_cache(client_with_frontend, tmp_path):
+    """/sw.js is served with Cache-Control: no-cache so Cloudflare's edge
+    (4h default for *.js) can't pin installed PWAs to a previous build; it
+    404s cleanly when the build has no service worker."""
+    c = client_with_frontend
+    assert c.get("/sw.js").status_code == 404
+
+    (tmp_path / "dist" / "sw.js").write_text("// fixture service worker")
+    res = c.get("/sw.js")
+    assert res.status_code == 200
+    assert "fixture service worker" in res.text
+    assert res.headers["cache-control"] == "no-cache"
 
 
 @pytest.mark.hardware

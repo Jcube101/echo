@@ -1182,3 +1182,78 @@ different axis than this round's target (horse-neigh) — flagged as a
 future opportunity instead. (4) Added `verification/coverage_gap.py` as a
 new, reusable tool (not requested by name, but implied by "write a small
 script that reports... which regions... are currently unoccupied").
+
+---
+
+# Session 10 — Design v2 S1: routing + PWA (2026-11-12)
+
+Scope: DESIGN_V2.md §7 item 1 only. No visual reskin; nothing in
+`extraction.py`, the feature schema, the DB or the upload limits was touched.
+
+## What was built
+
+- `main.py`: `/app` and `/app/{rest:path}` return `frontend/dist/index.html`,
+  registered after every API route and above the StaticFiles mount, inside the
+  `FRONTEND_DIST.exists()` guard. Plus `/sw.js` served with
+  `Cache-Control: no-cache` (found during verification — see below).
+- Frontend: `main.jsx` renders `Landing` (placeholder: wordmark, one line,
+  "Open Echo" link) unless the path is `/app` or under `/app/`, where it renders
+  today's `<App/>` unchanged. `/app?record=1` starts the browser recorder on
+  mount and then drops the param from the URL.
+- PWA: vite-plugin-pwa 2.0 — manifest name "Echo", `start_url: /app`,
+  `scope: /`, theme/background `#121A15`, placeholder icons (192, 512,
+  maskable 512, apple-touch) in `frontend/public/`.
+
+## Automated suites
+
+| Suite | Result |
+|---|---|
+| `pytest` (default run) | **99 passed**, 6 deselected (opt-in HW/sudo/tunnel). 4 new: DEPLOY-001..004 |
+| Vitest | **48 passed** (9 files; new `route.test.js`) |
+| Playwright | **16 passed, 1 failed** — the failure is E2E-010 (`recording-fake-device`), the known pre-existing environment gap (no audio session on the Pi; TEST_PLAN.md), unchanged by this session |
+| `npm run build` | OK; service worker precaches 10 entries (1392 KiB) |
+
+Changes to existing tests, routing-caused only: all ten e2e specs'
+`page.goto('/')` → `page.goto('/app')`. New `e2e/specs/routing.spec.mjs`
+(6 tests): `/` placeholder → "Open Echo" → `/app`; `/app/anything` serves the
+app; `/app?record=1` calls `getUserMedia` once with no click and cleans the
+URL; plain `/app` never touches the mic; a browser navigation to `/history`
+returns JSON **with the service worker in control**; manifest fields + icons.
+
+`?record=1` caveat: because of the same no-audio-session limit as E2E-010,
+the spec proves the recorder is *started* (mic requested, recorder UI or its
+error toast shown), not that a recording completes. A real-phone check is
+listed for Job.
+
+## Live checks (after `sudo -n systemctl restart echo`; `is-active` → active)
+
+Same results on `http://127.0.0.1:8014` and `https://echo.job-joseph.com`:
+
+| Path | Result |
+|---|---|
+| `/`, `/app`, `/app/anything`, `/app?record=1` | 200 `text/html` (index.html, 852 b) |
+| `/history`, `/samples`, `/api/health` | 200 `application/json` |
+| `/manifest.webmanifest` | 200 `application/manifest+json`, `start_url: /app`, `scope: /`, `theme_color: #121A15` |
+| `/sw.js`, `/registerSW.js`, icons, `/favicon.svg` | 200 |
+
+Headless Chromium against the public URL: `/` shows the placeholder (no
+canvas); "Open Echo" lands on `/app` with the canvas and the bundled sample;
+the service worker takes control; with it controlling, navigating to
+`/history` still returns `application/json` and `/app/anything` renders the
+app. Zero page errors.
+
+Vite dev server (run on a spare port, 5199, stopped by exact PID): `/`,
+`/app`, `/app/x`, `/app?record=1` all serve the dev index.html; `/` renders
+the placeholder and `/app` the app; `/history` proxies to the backend.
+
+## Found during verification
+
+Cloudflare's edge was caching `/sw.js` (`cf-cache-status: HIT`,
+`max-age=14400`). Added the `/sw.js` route with `Cache-Control: no-cache`;
+after that the edge reports `EXPIRED` (revalidates with the origin) on every
+request. See LEARNINGS.md.
+
+## Not verified (needs Job)
+
+- PWA install on Android Chrome, opening at `/app`.
+- `/app?record=1` on a real phone (permission prompt → recording starts).

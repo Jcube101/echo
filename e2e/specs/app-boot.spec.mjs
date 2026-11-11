@@ -5,7 +5,7 @@ import { trackConsoleErrors } from '../helpers.mjs'
 // shows the bundled sample, 0 console errors. Formalizes verify_ui.mjs.
 test('app boots with a non-blank canvas and the bundled sample', async ({ page }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
 
   const canvas = page.locator('canvas').first()
   await expect(canvas).toBeVisible()

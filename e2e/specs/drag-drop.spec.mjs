@@ -7,7 +7,7 @@ import { trackConsoleErrors } from '../helpers.mjs'
 // overlay; dropping a fixture file runs the upload flow.
 test('dragover shows the drop overlay, and dropping a file uploads it', async ({ page }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
 
   const bytes = Array.from(readFileSync(TONE_WAV))
   const dataTransfer = await page.evaluateHandle((data) => {

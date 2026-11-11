@@ -9,7 +9,7 @@ import { trackConsoleErrors, uploadFileAndWait } from '../helpers.mjs'
 // -> render.
 test('uploading a file renders a new clip', async ({ page }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
 
   await uploadFileAndWait(page, TONE_WAV)
 

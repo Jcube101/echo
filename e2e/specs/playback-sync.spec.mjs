@@ -12,7 +12,7 @@ import { trackConsoleErrors, uploadFileAndWait, setRangeValue } from '../helpers
 // highlights as playback advances)."
 test('scrubbing moves the playhead label forward through the clip', async ({ page }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
   await uploadFileAndWait(page, TONE_WAV)
 
   const slider = page.getByRole('slider', { name: 'Seek' })

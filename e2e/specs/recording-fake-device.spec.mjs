@@ -13,7 +13,7 @@ import { trackConsoleErrors } from '../helpers.mjs'
 // devices don't reproduce real device codec/mime behavior.
 test('recording via a fake mic device runs the real MediaRecorder path', async ({ page, context }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
   await context.grantPermissions(['microphone'], { origin: new URL(page.url()).origin })
 
   await page.getByTitle(/Record from your device mic/).click()

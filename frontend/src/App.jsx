@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import Scene from './components/Scene.jsx'
 import AnalysisPanel from './components/AnalysisPanel.jsx'
@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Toaster } from '@/components/ui/sonner'
 import { uploadAudio, friendlyError } from './lib/api.js'
 import { indexForTime } from './lib/nearestIndex.js'
+import { wantsAutoRecord } from './lib/route.js'
 import sample from './data/sample.json'
 
 export default function App() {
@@ -28,6 +29,14 @@ export default function App() {
   const [sampleMeta, setSampleMeta] = useState(null) // attribution when a sample is loaded
   const [historyKey, setHistoryKey] = useState(0) // bump to refresh the gallery
   const [view, setView] = useState('trail') // 'trail' (3D) | 'panel' (spectral)
+
+  // /app?record=1 (the landing page's "Record a sound" link): start the
+  // browser recorder straight away. Read once, then drop the param from the
+  // URL so a refresh or a shared link doesn't start recording again.
+  const [autoRecord] = useState(() => wantsAutoRecord(window.location.search))
+  useEffect(() => {
+    if (autoRecord) window.history.replaceState(null, '', window.location.pathname)
+  }, [autoRecord])
 
   const busy = status === 'processing'
 
@@ -110,7 +119,7 @@ export default function App() {
         </Tabs>
 
         <div className="ml-auto flex items-center gap-2">
-          <Controls busy={busy} onStatus={onStatus} onResult={onResult} />
+          <Controls busy={busy} onStatus={onStatus} onResult={onResult} autoRecord={autoRecord} />
           <Button
             onClick={() => setSamplesOpen(true)}
             className="bg-white/10 hover:bg-white/20 text-slate-100"

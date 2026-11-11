@@ -466,6 +466,51 @@ the same `/upload`, and the backend transcodes it to WAV with ffmpeg before
 extraction — so no format assumptions leak into the pipeline. iOS Safari's
 `audio/mp4` path is untested on a real device (see follow-ups).
 
+### SPA route vs StaticFiles ordering (Design v2 S1)
+`StaticFiles(html=True)` mounted at `/` serves `index.html` only for `/` (and
+real directories) — it does not fall back for unknown paths, so `/app` 404s
+without an explicit route. The `/app` + `/app/{rest:path}` route must be
+registered **before** the mount (a `/` mount matches every path it's asked
+for, so anything added after it is unreachable) and after the API routes. It
+lives inside the same `if FRONTEND_DIST.exists():` block. Also: a `@app.get`
+route doesn't answer `HEAD` — `curl -I /sw.js` falls through to StaticFiles
+and shows different headers than a real GET. Check headers with
+`curl -s -D - -o /dev/null`.
+
+### Service worker navigation fallback would hijack API URLs (Design v2 S1)
+Echo's API lives at root paths (`/history`, `/samples`) on the same origin as
+the SPA. Workbox's default `navigateFallback` answers **every** page
+navigation with the precached `index.html`, so opening `/history` in a browser
+tab would show the app instead of JSON once the worker is installed (curl
+never sees this — only a browser does). `vite.config.js` sets
+`navigateFallbackAllowlist` to just `/` and `/app*`. The allowlist regexes are
+matched against pathname **plus query string**, so they must allow
+`?record=1`. Guarded by `routing.spec.mjs`. Any new root-level SPA path needs
+adding to the allowlist; any new API path needs nothing.
+
+### Cloudflare edge-caches `sw.js` for 4 hours (Design v2 S1)
+Cloudflare caches `*.js` by extension, so `/sw.js` came back
+`cf-cache-status: HIT, max-age=14400`: after a deploy, installed PWAs would
+keep the previous build's precache list for up to 4 hours. `main.py` serves
+`/sw.js` with `Cache-Control: no-cache`; the edge then revalidates on every
+request (`cf-cache-status: EXPIRED`). Cloudflare still rewrites the header the
+browser sees to `max-age=14400` (its Browser Cache TTL), which is harmless:
+browsers bypass the HTTP cache when checking the worker script for updates.
+Hashed `/assets/*` files are fine to cache; `index.html` is not edge-cached.
+
+### Testing against a missing `frontend/dist` (Design v2 S1)
+The plain `client` fixture does **not** mean "no frontend": with
+`ECHO_FRONTEND_DIST` unset, `main.py` falls back to the real `frontend/dist`,
+which exists on this machine. To test the no-dist case, point the seam at a
+nonexistent directory (`_reload_backend(..., frontend_dist=tmp/"nope")`).
+
+### PWA icons are placeholders, rendered from `favicon.svg` (Design v2 S1)
+`frontend/public/pwa-*.png` and `apple-touch-icon.png` were rendered once from
+`frontend/public/favicon.svg` with Playwright's Chromium (no image library is
+installed in the venv). The maskable/apple versions use a square background
+with the mark scaled to 72% for the safe zone. Replace all five when the real
+wordmark mark is built.
+
 ---
 
 ## Manual follow-ups for Job
@@ -476,3 +521,8 @@ extraction — so no format assumptions leak into the pipeline. iOS Safari's
   real file upload through the identical `uploadAudio → /upload → render` code
   path. **Please test live from an Android phone at `echo.job-joseph.com`**,
   and note any iOS Safari quirks (mime is `audio/mp4` there) in this file.
+- **PWA install (Design v2 S1, 2026-11-12):** on Android Chrome open
+  `echo.job-joseph.com`, install it (menu → "Install app" / "Add to Home
+  screen"), and confirm the home-screen icon opens at `/app`, not the landing
+  page. Also open `echo.job-joseph.com/app?record=1` on the phone and confirm
+  recording starts after the permission prompt. Then mark S1 ✅ in ROADMAP.md.

@@ -214,8 +214,30 @@ def _rmdir(d: Path) -> None:
         pass
 
 
-# --- StaticFiles: MOUNTED LAST (locked) ---------------------------------------
+# --- SPA route + StaticFiles: MOUNTED LAST (locked) ---------------------------
 # All API routes above take precedence. In dev, frontend/dist may not exist yet.
 if FRONTEND_DIST.exists():
+    # Design v2: the app lives at /app (landing page at /). StaticFiles'
+    # html=True only serves index.html for "/", so /app and /app/* need an
+    # explicit route. It must be registered BEFORE the "/" mount (which
+    # swallows everything it's asked for) and after every API route.
+    @app.get("/app", include_in_schema=False)
+    @app.get("/app/{rest:path}", include_in_schema=False)
+    def spa_app(rest: str = ""):
+        return FileResponse(FRONTEND_DIST / "index.html", media_type="text/html")
+
+    # The PWA service worker must never be served stale: Cloudflare's edge
+    # caches *.js for 4 hours by default, which would hold every installed
+    # client on the previous build's precache list after a deploy. no-cache
+    # makes the edge and the browser revalidate it every time. (Hashed
+    # /assets/* files are safe to cache; index.html isn't edge-cached.)
+    @app.get("/sw.js", include_in_schema=False)
+    def service_worker():
+        path = FRONTEND_DIST / "sw.js"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Not found.")
+        return FileResponse(path, media_type="text/javascript",
+                            headers={"Cache-Control": "no-cache"})
+
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True),
               name="frontend")

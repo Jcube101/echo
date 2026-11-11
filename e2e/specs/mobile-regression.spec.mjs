@@ -17,7 +17,7 @@ test.use({ ...devices['Pixel 5'], hasTouch: true })
 
 test('vertical drag is locked (no pole flip); horizontal drag still rotates', async ({ page }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
   const canvas = page.locator('canvas').first()
   await expect(canvas).toBeVisible()
   await page.waitForTimeout(300) // let the initial frame settle before the baseline shot
@@ -51,7 +51,7 @@ test('vertical drag is locked (no pole flip); horizontal drag still rotates', as
 })
 
 test('canvas fills its container in portrait and after rotating to landscape', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/app')
   const canvas = page.locator('canvas').first()
   await expect(canvas).toBeVisible()
 

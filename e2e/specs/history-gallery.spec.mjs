@@ -10,7 +10,7 @@ import { trackConsoleErrors, uploadFileAndWait } from '../helpers.mjs'
 // GET /history/{id}."
 test('gallery lists uploaded clips and reloads on click', async ({ page }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
 
   await uploadFileAndWait(page, TONE_WAV)
   const firstFooter = await page.getByText(/clip [0-9a-f]+/).textContent()

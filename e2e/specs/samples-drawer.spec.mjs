@@ -10,7 +10,7 @@ import { trackConsoleErrors } from '../helpers.mjs'
 // attribution visible."
 test('samples drawer lists attribution and loads a sample on click', async ({ page }) => {
   const errors = trackConsoleErrors(page)
-  await page.goto('/')
+  await page.goto('/app')
 
   await page.getByTitle('Curated example sounds').click()
   const drawer = page.getByRole('dialog', { name: /Sample sounds/ })
