@@ -15,9 +15,17 @@ import { trackConsoleErrors } from '../helpers.mjs'
 //   no white flash / cutoff.
 test.use({ ...devices['Pixel 5'], hasTouch: true })
 
+// Design v2 S3: the phone opens on the idle home screen (no 3D scene), so
+// these tests first load a sample to reach the result screen's trail.
+async function openSampleOnPhone(page) {
+  await page.getByTestId('home-sample').first().click()
+  await expect(page.getByRole('button', { name: 'Back to home' })).toBeVisible({ timeout: 20_000 })
+}
+
 test('vertical drag is locked (no pole flip); horizontal drag still rotates', async ({ page }) => {
   const errors = trackConsoleErrors(page)
   await page.goto('/app')
+  await openSampleOnPhone(page)
   const canvas = page.locator('canvas').first()
   await expect(canvas).toBeVisible()
   await page.waitForTimeout(300) // let the initial frame settle before the baseline shot
@@ -52,6 +60,7 @@ test('vertical drag is locked (no pole flip); horizontal drag still rotates', as
 
 test('canvas fills its container in portrait and after rotating to landscape', async ({ page }) => {
   await page.goto('/app')
+  await openSampleOnPhone(page)
   const canvas = page.locator('canvas').first()
   await expect(canvas).toBeVisible()
 

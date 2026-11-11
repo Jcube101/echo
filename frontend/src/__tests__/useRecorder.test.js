@@ -136,4 +136,75 @@ describe('useRecorder', () => {
     expect(mr.state).toBe('inactive')
     expect(onComplete).toHaveBeenCalledTimes(1)
   })
+
+  // --- Design v2 S3: cancel + level meter -----------------------------------
+  it('cancel() releases the mic and never fires onComplete', async () => {
+    FakeMediaRecorder.supportedTypes = new Set(['audio/webm'])
+    const stream = fakeStream()
+    global.navigator.mediaDevices.getUserMedia.mockResolvedValue(stream)
+    const onComplete = vi.fn()
+    const { result } = renderHook(() => useRecorder(onComplete))
+    await act(async () => { await result.current.start() })
+    FakeMediaRecorder.instances[0].ondataavailable({ data: new Blob(['x'], { type: 'audio/webm' }) })
+
+    act(() => { result.current.cancel() })
+
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(stream._track.stop).toHaveBeenCalled()
+    expect(result.current.recording).toBe(false)
+  })
+
+  it('a recording after a cancelled one completes normally', async () => {
+    FakeMediaRecorder.supportedTypes = new Set(['audio/webm'])
+    const onComplete = vi.fn()
+    const { result } = renderHook(() => useRecorder(onComplete))
+    await act(async () => { await result.current.start() })
+    act(() => { result.current.cancel() })
+
+    await act(async () => { await result.current.start() })
+    const mr = FakeMediaRecorder.instances[1]
+    mr.ondataavailable({ data: new Blob(['x'], { type: 'audio/webm' }) })
+    act(() => { result.current.stop() })
+    expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('samples live levels from the same stream and closes the audio context on stop', async () => {
+    vi.useFakeTimers()
+    FakeMediaRecorder.supportedTypes = new Set(['audio/webm'])
+    const close = vi.fn().mockResolvedValue()
+    const connect = vi.fn()
+    const createMediaStreamSource = vi.fn(() => ({ connect }))
+    window.AudioContext = vi.fn(() => ({
+      createAnalyser: () => ({
+        fftSize: 0,
+        getByteTimeDomainData: (buf) => buf.fill(192), // a steady, clearly non-silent signal
+      }),
+      createMediaStreamSource,
+      close,
+    }))
+    const stream = fakeStream()
+    global.navigator.mediaDevices.getUserMedia.mockResolvedValue(stream)
+    const { result } = renderHook(() => useRecorder(vi.fn()))
+    await act(async () => { await result.current.start() })
+    expect(global.navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1) // no second mic request
+    expect(createMediaStreamSource).toHaveBeenCalledWith(stream)
+
+    act(() => { vi.advanceTimersByTime(350) })
+    expect(result.current.levels.length).toBe(3)
+    expect(result.current.levels[0]).toBeGreaterThan(0.5)
+
+    act(() => { result.current.stop() })
+    expect(close).toHaveBeenCalled()
+    expect(result.current.levels).toEqual([])
+    delete window.AudioContext
+  })
+
+  it('records normally when Web Audio is unavailable (no level meter)', async () => {
+    FakeMediaRecorder.supportedTypes = new Set(['audio/webm'])
+    delete window.AudioContext
+    const { result } = renderHook(() => useRecorder(vi.fn()))
+    await act(async () => { await result.current.start() })
+    expect(result.current.recording).toBe(true)
+    expect(result.current.levels).toEqual([])
+  })
 })

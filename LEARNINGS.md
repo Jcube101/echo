@@ -551,6 +551,36 @@ precache (`globPatterns` + `globIgnores` in `vite.config.js`). The 3D axis
 labels (drei `<Text>`) still fetch their default font from a CDN at runtime —
 an existing behaviour, and the one thing in the app shell that isn't offline.
 
+### One recorder, owned above the layouts (Design v2 S3)
+The recorder used to live in the header `Controls`. The phone has no header:
+its record button is on the home screen and the recording UI is a full
+screen, so the hook had to move up. `lib/useClipActions.js` (upload, record,
+Pi capture, the hidden file input's ref) is created once in `App` and passed
+to whichever layout is showing. Rotating a phone mid-recording swaps layouts
+without touching the recording. Don't call `useRecorder` from a layout
+component again — two instances means two mics.
+
+### Level meter rules (Design v2 S3)
+The level bars read an `AnalyserNode` attached to the SAME `MediaStream` as
+the `MediaRecorder` — never a second `getUserMedia`. The `AudioContext` is
+closed in the recorder's `cleanup()`, alongside stopping the tracks, so the
+"mic switches off as soon as you stop" promise holds. It is wrapped in
+try/catch: no Web Audio means flat bars, not a failed recording.
+
+### Iterate on a scratch build, not `dist` (Design v2 S3)
+Because a build into `frontend/dist` is live immediately, UI iteration now
+goes: `npx vite build --outDir <scratch>` → uvicorn on a spare port with
+`ECHO_FRONTEND_DIST=<scratch>` and a temp `ECHO_DATA_DIR` → screenshot →
+repeat; then one real `npm run build`. Kill the scratch uvicorn by PID.
+
+### Faking the mic for screenshots and wiring tests (Design v2 S3)
+Chromium's fake-device capture fails on this Pi (no audio session), but an
+init script that replaces `navigator.mediaDevices.getUserMedia` (returning an
+oscillator → `MediaStreamDestination` stream, or an empty `MediaStream`) and
+`window.MediaRecorder` with a small class works, and Web Audio itself runs
+fine headless. That is enough to exercise the recording screen, Cancel and
+Stop. It does not test real capture or codecs — that stays a phone check.
+
 ---
 
 ## Manual follow-ups for Job
@@ -564,3 +594,9 @@ an existing behaviour, and the one thing in the app shell that isn't offline.
 - ~~**PWA install (Design v2 S1, 2026-11-12):** install on Android Chrome and
   confirm it opens at `/app`; confirm `/app?record=1` starts recording.~~
   **Done — Job confirmed both on his Android phone, 2026-11-12.**
+- **Phone app (Design v2 S3, 2026-11-12):** on the Android phone open the
+  installed Echo (or `echo.job-joseph.com/app`): tap the record circle, check
+  the ring counts up and the level bars move with sound, tap "Stop and see
+  its shape" and confirm the result screen plays back. Then record again and
+  tap Cancel: it should return home with nothing new in History. If both
+  work, mark S3 ✅ in ROADMAP.md.

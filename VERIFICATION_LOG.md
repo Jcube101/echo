@@ -1354,3 +1354,83 @@ script, so this was checked by hand.
    the 360px sidebar left the stage too narrow.
 8. **Pi mic default** stays 5 s (mockup shows 10 s).
 9. **Trail blending** changed from additive to normal — see LEARNINGS.md.
+
+---
+
+# Session 12 — Design v2 S3: phone app (2026-11-12)
+
+Scope: DESIGN_V2.md §7 item 3. Frontend only. Phone layouts apply below
+640px; 640–1199px keeps the S2 layout without the sidebar; ≥1200px is the
+desktop workspace.
+
+## What was built
+
+- **Home (§4.5):** wordmark + History; 168px rust record circle with rings,
+  "Tap to record", "Up to 60 seconds"; Upload and Pi mic (with duration
+  chip); "Or try a sample" with four samples and "All 14" opening the
+  Samples sheet.
+- **Recording (§4.6):** "LISTENING", "Point toward the sound", 280px
+  countdown ring (amber arc, "0:03 of 1:00 max"), live level bars, rust
+  "Stop and see its shape", Cancel, and the one-minute note.
+- **Result (§4.7):** back, clip name + type, History; full-width
+  3D Trail / Spectral tabs; trail; Pitch/Timbre/Motion chips; compact
+  spectrogram with playhead; dock with play/pause, seek bar and times;
+  attribution line for samples.
+- **Recorder:** `cancel()` (stops the mic, discards the audio, no upload);
+  live `levels` from an `AnalyserNode` on the same stream, closed on stop.
+- **Refactor:** upload / record / Pi-capture logic moved from `Controls` into
+  `lib/useClipActions.js`, owned once by `App`, so the desktop header and the
+  phone screens share one recorder. Desktop behaviour is unchanged.
+
+## Automated suites
+
+| Suite | Result |
+|---|---|
+| `pytest` (default run) | **99 passed**, 6 deselected (no backend change) |
+| Vitest | **54 passed** (4 new recorder tests: cancel, cancel-then-record, levels + context close, no Web Audio) |
+| Playwright | **22 passed, 1 failed** — E2E-010 again (no audio session on the Pi), unchanged |
+| `npm run build` | OK; precache 16 entries (1538 KiB) |
+
+New `e2e/specs/phone-app.spec.mjs` (Pixel 5 emulation, 3 tests): home →
+sample → result → Spectral tab → back; upload from the home screen then
+reload it from History; recording screen with Cancel (no upload) and Stop
+(one POST to `/upload`). `mobile-regression.spec.mjs` now loads a sample
+first, because the phone opens on the home screen, which has no 3D scene;
+its assertions are unchanged and pass.
+
+The recording spec uses a stand-in `getUserMedia` / `MediaRecorder`: it
+proves the screen and its wiring (countdown, cancel discards, stop uploads),
+not the browser's real capture or codec path.
+
+## Visual check against the mockups
+
+390×844 at 2×, from the public URL, in `verification/design_v2_s3/`
+(gitignored, on the Pi): `home.png`, `recording.png`, `result.png`,
+`result-spectral.png`, `samples-sheet.png`. They match mockups 05–07 in
+layout and proportions. Desktop re-shot after the refactor: no change, zero
+console/page errors on both.
+
+Iteration was done from a scratch build served on a private port (8093,
+temp data dir, stopped by PID); `frontend/dist` was only rebuilt once the
+screens were right.
+
+Live after `sudo -n systemctl restart echo` (`is-active` → active): `/`,
+`/app`, `/app?record=1` 200 HTML; `/history`, `/samples` 200 JSON.
+
+## Deviations from the brief / mockups
+
+1. **No sample thumbnails** on the home list (deferred to S4; `/samples`
+   has no image and four feature files would cost ~1 MB).
+2. **Pi mic** shows "Pi mic" plus a "5 s" duration chip rather than one
+   "Pi mic · 10 s" button, so the duration stays changeable; default 5 s.
+3. **3D axis ticks/names** as on desktop (kept, recoloured).
+4. **Spectral view on the phone** is the S2 lane layout with a narrower label
+   column; the brief has no mockup for it.
+5. **The level bars** fill left to right with the last 4.8 s of loudness and
+   then scroll; the mockup shows a static illustration.
+
+## Not verified (needs Job)
+
+- Recording end to end on a real Android phone: tap record → ring and level
+  bars move → Stop → result screen; and Cancel returning home with nothing
+  added to History.

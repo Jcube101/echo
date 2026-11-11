@@ -57,7 +57,10 @@ export function visibleFreqTicks(ticks, heightPx = STRIP_PX) {
 // rendered from its native cols×bins into an offscreen canvas, then bilinearly
 // upscaled to the container size (× devicePixelRatio) so it fills any width with
 // no blocky pixelation, and re-fits on resize/orientation change.
-export default function Spectrogram({ spectrogram, progress = 0, duration = 0 }) {
+//
+// `compact` (phone result screen, DESIGN_V2.md §4.7) draws just the image and
+// playhead: no Hz gutter, gridlines or time axis.
+export default function Spectrogram({ spectrogram, progress = 0, duration = 0, compact = false }) {
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
   const offRef = useRef(null)
@@ -126,8 +129,21 @@ export default function Spectrogram({ spectrogram, progress = 0, duration = 0 })
 
   if (!hasData) {
     return (
-      <div className="h-24 grid place-items-center rounded-[10px] border border-night-line bg-night text-xs text-muted-foreground">
+      <div className={(compact ? 'h-[72px]' : 'h-24') + ' grid place-items-center rounded-[10px] border border-night-line bg-night text-xs text-muted-foreground'}>
         spectrogram appears once a clip is loaded
+      </div>
+    )
+  }
+
+  if (compact) {
+    return (
+      <div ref={wrapRef} className="relative h-[72px] overflow-hidden rounded-xl bg-[#16201A]">
+        <canvas ref={canvasRef} className="block h-full w-full" />
+        <div
+          data-testid="spectrogram-playhead"
+          className="absolute top-0 bottom-0 w-0.5 -ml-px bg-amber pointer-events-none"
+          style={{ left: `${Math.min(100, Math.max(0, progress * 100))}%` }}
+        />
       </div>
     )
   }

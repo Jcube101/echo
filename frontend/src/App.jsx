@@ -3,7 +3,10 @@ import { toast } from 'sonner'
 import Scene from './components/Scene.jsx'
 import AnalysisPanel from './components/AnalysisPanel.jsx'
 import Controls, { HEADER_BTN } from './components/Controls.jsx'
-import Sidebar from './components/Sidebar.jsx'
+import Sidebar, { clipLabel } from './components/Sidebar.jsx'
+import {
+  PhoneHome, PhoneRecording, PhoneResultHeader, PlayheadChips,
+} from './components/PhoneScreens.jsx'
 import Wordmark from './components/Wordmark.jsx'
 import PlaybackBar from './components/PlaybackBar.jsx'
 import Gallery from './components/Gallery.jsx'
@@ -12,7 +15,8 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Toaster } from '@/components/ui/sonner'
 import { History, Library } from 'lucide-react'
-import { uploadAudio, getClip, friendlyError } from './lib/api.js'
+import { uploadAudio, getClip, getSample, friendlyError } from './lib/api.js'
+import { useClipActions } from './lib/useClipActions.js'
 import { useMediaQuery } from './lib/useMediaQuery.js'
 import { indexForTime } from './lib/nearestIndex.js'
 import { wantsAutoRecord } from './lib/route.js'
@@ -49,6 +53,11 @@ export default function App() {
   // width the stage keeps the floating attribution chip instead; the phone
   // layouts proper arrive in session 3.
   const isDesktop = useMediaQuery('(min-width: 1200px)')
+  // Phone layouts (DESIGN_V2.md §4.5–4.7): home, recording, result.
+  const isPhone = useMediaQuery('(max-width: 639px)')
+  // On the phone, a loaded clip opens the result screen; Back returns home.
+  const [showResult, setShowResult] = useState(false)
+  const [loadingSampleId, setLoadingSampleId] = useState(null)
 
   const playheadIndex = useMemo(
     () => (features.length ? indexForTime(features, playheadSec) : null),
@@ -73,6 +82,7 @@ export default function App() {
     setClipId(res.id || null)
     setPlayheadSec(0)
     setDuration(res.duration_s || (res.features.length ? res.features[res.features.length - 1].t : 0))
+    setShowResult(true)
     const isSample = res.source_type === 'sample'
     setSampleMeta(isSample ? res : null)
     setClipInfo(isSample ? null : {
@@ -102,6 +112,26 @@ export default function App() {
     }
   }, [applyClip, onStatus])
 
+  // Phone home "Or try a sample": load one without opening the Samples sheet.
+  const loadSample = useCallback(async (id) => {
+    setLoadingSampleId(id)
+    onStatus('processing', 'Loading sample…')
+    try {
+      const clip = await getSample(id)
+      applyClip({ ...clip, source_type: 'sample', sample: clip })
+      onStatus('idle')
+    } catch (err) {
+      const msg = friendlyError(err)
+      onStatus('error', msg)
+      toast.error("Couldn't load sample", { description: msg })
+    } finally {
+      setLoadingSampleId(null)
+    }
+  }, [applyClip, onStatus])
+
+  // Upload, browser recording and Pi capture — one owner for every layout.
+  const actions = useClipActions({ onStatus, onResult, autoRecord })
+
   // Drag & drop anywhere over the scene.
   const onDrop = useCallback(async (e) => {
     e.preventDefault()
@@ -127,6 +157,130 @@ export default function App() {
     'data-[state=active]:text-ink data-[state=active]:shadow-none data-[state=inactive]:text-muted-foreground ' +
     'data-[state=inactive]:hover:text-cream'
 
+  // --- Shared pieces (every layout) -------------------------------------------
+  const stageView = view === 'trail' ? (
+    // key={view} + a restrained fade-in gives the tab switch a real transition
+    // instead of an instant swap. Purely a wrapper: Scene's own
+    // markup/camera/rendering is untouched.
+    <div key="trail" className="absolute inset-0 animate-in fade-in-0 duration-200">
+      <Scene features={features} highlightIndex={highlightIndex} />
+    </div>
+  ) : (
+    <div key="panel" className="absolute inset-0 bg-night animate-in fade-in-0 duration-200">
+      <AnalysisPanel
+        features={features}
+        duration={duration}
+        playheadSec={playheadSec}
+        onSeek={setPlayheadSec}
+      />
+    </div>
+  )
+
+  const processingOverlay = busy && (
+    <div className="absolute inset-0 z-20 grid place-items-center bg-night/70 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 rounded-full border-2 border-night-line border-t-amber animate-spin" />
+        <div className="text-[15px] text-cream">{message || 'Working…'}</div>
+        <div className="text-[13px] text-muted-foreground">pitch analysis can take a moment</div>
+      </div>
+    </div>
+  )
+
+  const sheets = (
+    <>
+      <input
+        ref={actions.fileRef}
+        type="file"
+        accept="audio/*,video/*,.opus,.m4a,.webm,.ogg"
+        className="hidden"
+        onChange={actions.onPick}
+      />
+      <Samples
+        open={samplesOpen}
+        onClose={() => setSamplesOpen(false)}
+        currentId={clipId}
+        onLoaded={applyClip}
+        onStatus={onStatus}
+      />
+      <Gallery
+        open={galleryOpen}
+        onClose={() => setGalleryOpen(false)}
+        currentId={clipId}
+        refreshKey={historyKey}
+        onLoaded={applyClip}
+        onStatus={onStatus}
+      />
+    </>
+  )
+
+  // --- Phone (DESIGN_V2.md §4.5–4.7) ------------------------------------------
+  if (isPhone) {
+    const recording = actions.recorder.recording
+    const hasClip = clipId != null && showResult
+    return (
+      <div className="relative h-full w-full bg-night text-cream">
+        <Toaster position="top-center" />
+        {recording ? (
+          <PhoneRecording recorder={actions.recorder} onOpenHistory={() => setGalleryOpen(true)} />
+        ) : hasClip ? (
+          <div className="flex h-full flex-col overflow-y-auto">
+            <PhoneResultHeader
+              title={sampleMeta ? sampleMeta.species : clipInfo ? clipLabel(clipInfo) : 'Clip'}
+              subtitle={`${sampleMeta ? 'Sample' : 'Clip'} · ${duration.toFixed(1)} s`}
+              onBack={() => setShowResult(false)}
+              onOpenHistory={() => setGalleryOpen(true)}
+            />
+            <div className="px-4">
+              <Tabs value={view} onValueChange={setView}>
+                <TabsList aria-label="View" className="grid h-auto w-full grid-cols-2 gap-0.5 rounded-full border border-night-line bg-night-2 p-1">
+                  <TabsTrigger value="trail" className={TAB}>3D Trail</TabsTrigger>
+                  <TabsTrigger value="panel" className={TAB}>Spectral</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+            <main className="relative min-h-[300px] flex-1">{stageView}</main>
+            <div className="px-4 py-3">
+              <PlayheadChips frame={playheadFrame} />
+            </div>
+            <PlaybackBar
+              phone
+              audioUrl={audioUrl}
+              duration={duration}
+              spectrogram={spectrogram}
+              playheadSec={playheadSec}
+              onSeek={setPlayheadSec}
+            >
+              {sampleMeta && (
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  rec. {sampleMeta.recordist} ·{' '}
+                  <a href={sampleMeta.license_url} target="_blank" rel="noopener noreferrer"
+                     className="underline decoration-dotted underline-offset-2">{sampleMeta.license}</a>
+                  {' · '}
+                  <a href={sampleMeta.source_url} target="_blank" rel="noopener noreferrer"
+                     className="text-amber">
+                    {sampleMeta.provider === 'freesound' ? 'Freesound' : 'Xeno-canto'}
+                  </a>
+                </p>
+              )}
+            </PlaybackBar>
+          </div>
+        ) : (
+          <PhoneHome
+            actions={actions}
+            busy={busy}
+            onOpenHistory={() => setGalleryOpen(true)}
+            onOpenSamples={() => setSamplesOpen(true)}
+            onPickSample={loadSample}
+            loadingSampleId={loadingSampleId}
+          />
+        )}
+        {processingOverlay}
+        {sheets}
+      </div>
+    )
+  }
+
+  // --- Tablet + desktop (DESIGN_V2.md §4.3–4.4) -------------------------------
   return (
     <div className="h-full w-full flex flex-col bg-night text-cream">
       <Toaster position="top-center" />
@@ -144,7 +298,7 @@ export default function App() {
         </Tabs>
 
         <div className="ml-auto flex flex-wrap items-center gap-2 sm:gap-3">
-          <Controls busy={busy} onStatus={onStatus} onResult={onResult} autoRecord={autoRecord} />
+          <Controls actions={actions} busy={busy} />
           <span className="hidden xl:block mx-2 h-7 w-px bg-night-line" aria-hidden />
           <Button
             onClick={() => setSamplesOpen(true)}
@@ -173,23 +327,7 @@ export default function App() {
             onDragLeave={() => setDragOver(false)}
             onDrop={onDrop}
           >
-            {/* key={view} + a restrained fade-in gives the tab switch a real
-                transition instead of an instant swap. Purely a wrapper: Scene's
-                own markup/camera/rendering is untouched. */}
-            {view === 'trail' ? (
-              <div key="trail" className="absolute inset-0 animate-in fade-in-0 duration-200">
-                <Scene features={features} highlightIndex={highlightIndex} />
-              </div>
-            ) : (
-              <div key="panel" className="absolute inset-0 bg-night animate-in fade-in-0 duration-200">
-                <AnalysisPanel
-                  features={features}
-                  duration={duration}
-                  playheadSec={playheadSec}
-                  onSeek={setPlayheadSec}
-                />
-              </div>
-            )}
+            {stageView}
 
             {/* Drag overlay */}
             {dragOver && (
@@ -198,16 +336,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Processing overlay */}
-            {busy && (
-              <div className="absolute inset-0 grid place-items-center bg-night/70 backdrop-blur-sm">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-8 w-8 rounded-full border-2 border-night-line border-t-amber animate-spin" />
-                  <div className="text-[15px] text-cream">{message || 'Working…'}</div>
-                  <div className="text-[13px] text-muted-foreground">pitch analysis can take a moment</div>
-                </div>
-              </div>
-            )}
+            {processingOverlay}
 
             {view === 'trail' && (
               <>
@@ -217,7 +346,7 @@ export default function App() {
 
                 {/* Loudness legend: point size and colour both follow loudness. */}
                 <div
-                  className="absolute bottom-4 right-4 sm:right-5 hidden sm:flex items-center gap-2.5 text-[13px] text-muted-foreground pointer-events-none"
+                  className="absolute bottom-4 right-4 sm:right-5 flex items-center gap-2.5 text-[13px] text-muted-foreground pointer-events-none"
                   role="img"
                   aria-label="Legend: points grow and shift from green through amber to cream as the sound gets louder"
                 >
@@ -233,11 +362,11 @@ export default function App() {
               </>
             )}
 
-            {/* Below desktop width there is no sidebar clip card, so the
-                attribution credit stays on the stage (required for the
+            {/* Between phone and desktop width there is no sidebar clip card,
+                so the attribution credit stays on the stage (required for the
                 publicly-served Creative Commons recordings). */}
             {sampleMeta && !isDesktop && (
-              <div className="absolute bottom-11 left-3 right-3 sm:left-auto sm:max-w-[70vw] text-xs bg-night-2/90 rounded-[10px] px-3 py-2 backdrop-blur border border-night-line">
+              <div className="absolute bottom-11 right-3 max-w-[70vw] text-xs bg-night-2/90 rounded-[10px] px-3 py-2 backdrop-blur border border-night-line">
                 <span className="text-cream font-medium">{sampleMeta.species}</span>
                 <span className="text-muted-foreground"> — rec. {sampleMeta.recordist} · </span>
                 <a href={sampleMeta.license_url} target="_blank" rel="noopener noreferrer"
@@ -275,22 +404,7 @@ export default function App() {
         )}
       </div>
 
-      <Samples
-        open={samplesOpen}
-        onClose={() => setSamplesOpen(false)}
-        currentId={clipId}
-        onLoaded={applyClip}
-        onStatus={onStatus}
-      />
-
-      <Gallery
-        open={galleryOpen}
-        onClose={() => setGalleryOpen(false)}
-        currentId={clipId}
-        refreshKey={historyKey}
-        onLoaded={applyClip}
-        onStatus={onStatus}
-      />
+      {sheets}
     </div>
   )
 }

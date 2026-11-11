@@ -19,7 +19,7 @@ export function sourceLabel(sourceType) {
   return SOURCE_LABEL[sourceType] || 'Clip'
 }
 
-function clipLabel(info) {
+export function clipLabel(info) {
   if (info.kind === 'recording') return 'Recorded in browser'
   if (info.kind === 'upload') return info.name ? `Uploaded · ${info.name}` : 'Uploaded'
   if (info.kind === 'pi_mic') return 'Pi microphone'
