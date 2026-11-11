@@ -2,7 +2,7 @@
 
 **Living document** — jointly maintained by Job and Claude Code sessions.
 Update status inline as work starts and ships; log notable changes in the
-Changelog at the bottom. Last updated: 2026-07-18.
+Changelog at the bottom. Last updated: 2026-11-11.
 
 Echo turns an audio clip into an interactive 3D trail through
 pitch/timbre/motion space. This roadmap is the build order: each milestone is
@@ -28,6 +28,7 @@ this Pi.
 | v1 — Core Product (M1–M9) | ✅ Shipped |
 | v1.x — Polish | 🚧 In progress (1 of 4 items started) |
 | v1.5 — Extended Spectral Analysis Panel | ✅ Shipped (2D panel; 3D cube deferred) |
+| v1.6 — Frontend Redesign (Design v2) | 📋 Planned |
 | v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
 
@@ -204,6 +205,24 @@ trail concept, just on richer axes.
 
 ---
 
+## v1.6 — Frontend Redesign (Design v2) — 📋 Planned
+
+Full brief, tokens, screen specs, final copy and open decisions: **`DESIGN_V2.md`**.
+Frontend only, plus one backend route; no extraction/schema/storage changes.
+
+- 📋 **Planned** — S1 Routing + PWA: landing at `/`, app at `/app` (backend
+  `/app` route above the StaticFiles mount), PWA `start_url: /app`. Absorbs the
+  v1.x PWA item
+- 📋 **Planned** — S2 Design tokens + desktop app reskin (header, clip sidebar,
+  dock + spectrogram, Spectral panel labels). Needs Job's call on trail and
+  spectrogram colours first (DESIGN_V2.md D4/D5)
+- 📋 **Planned** — S3 Phone app: idle home, recording screen, result screen
+- 📋 **Planned** — S4 Landing page, desktop + phone, with a static hero SVG and
+  FAQ (closed by default)
+- 📋 **Planned** — S5 Update Vitest/Playwright tests for the new UI; docs
+
+---
+
 ## v2 — Avian Visitors as a Client of Echo (future) — 📋 Planned
 
 **Reaffirmed decision:** species identification (BirdNET — Cornell's
@@ -278,6 +297,9 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-11-11** — Added v1.6 Frontend Redesign (Design v2) as planned, with
+  the full brief in `DESIGN_V2.md`. Decided: landing page at `/`, app at `/app`,
+  no species/ID language on the site.
 - **2026-07-19** — Shipped shadcn/ui component polish (session 7, frontend
   only): Button/Select/Tabs/Sheet+Card/toast primitives replace the raw HTML
   controls; palette mapped to Echo's exact existing colors (verified
