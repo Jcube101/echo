@@ -1,6 +1,6 @@
 # Echo — Design v2 (frontend redesign brief)
 
-**Status:** 📋 Planned (see ROADMAP.md, "v1.6 — Frontend Redesign").
+**Status:** 🚧 In progress — S1 and S2 shipped (see ROADMAP.md, "v1.6 — Frontend Redesign").
 **Design canvas:** https://claude.ai/artifact/LTDnZh1wrRMpBHxwdpmnaH (private to Job — Claude Code can't open it).
 **Screenshots:** `docs/design-v2/` — **open the matching PNG before building each screen** and match it. Where a PNG and this text disagree, this text wins; flag the mismatch to Job.
 **Scope:** frontend only, plus one small backend route. No changes to extraction, the feature schema, storage, retention or any API response.
@@ -278,9 +278,9 @@ in the same change.
 | D1 | Landing at `/`, app at `/app`, PWA starts at `/app` | ✅ Decided (Job) |
 | D2 | No bird/species/ID language; no future-project teasers on the site | ✅ Decided (Job) |
 | D3 | Self-hosted fonts via `@fontsource` | ✅ Proposed in this brief |
-| D4 | **3D trail colour.** Design shows green → amber → pale-cream by loudness, on `night`. Today's trail is teal with additive glow, and session 7 deliberately left trail colours untouched. | ❓ **Ask Job before session 2** |
-| D5 | Spectrogram colour ramp: `#16201A` → `#2F4A3A` (35%) → `#E8B04B` (70%) → `#F4EFE4`, replacing the current ramp | ❓ Confirm with D4 |
-| D6 | Camera presets (Free/Front/Side/Top) | Optional — only if cheap in session 2 |
+| D4 | **3D trail colour.** Green → amber → pale-cream by loudness, on `night`, replacing the teal additive-glow trail. | ✅ Decided (Job, 2026-11-12) — built in S2 |
+| D5 | Spectrogram colour ramp: `#16201A` → `#2F4A3A` (35%) → `#E8B04B` (70%) → `#F4EFE4`, replacing the current ramp | ✅ Decided (Job, 2026-11-12) — built in S2 |
+| D6 | Camera presets (Free/Front/Side/Top) | ⏸ Left out for now (Job, 2026-11-12) — not built in S2 |
 
 ---
 

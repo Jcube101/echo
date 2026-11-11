@@ -1,18 +1,18 @@
 import React, { useEffect, useMemo, useRef } from 'react'
+import { fmtClock } from '../lib/format.js'
 
-// Magma-ish ramp: 0 -> near-black indigo, mid -> magenta/orange, high -> pale.
+// Design v2 ramp (DESIGN_V2.md D5): night-green → deep green → amber → cream.
+const STOPS = [
+  [0.0, [0x16, 0x20, 0x1a]],
+  [0.35, [0x2f, 0x4a, 0x3a]],
+  [0.7, [0xe8, 0xb0, 0x4b]],
+  [1.0, [0xf4, 0xef, 0xe4]],
+]
 function ramp(v) {
   const t = v / 255
-  const stops = [
-    [0.0, [8, 4, 20]],
-    [0.3, [60, 16, 90]],
-    [0.55, [150, 40, 90]],
-    [0.78, [230, 100, 50]],
-    [1.0, [252, 235, 180]],
-  ]
-  for (let i = 0; i < stops.length - 1; i++) {
-    const [t0, c0] = stops[i]
-    const [t1, c1] = stops[i + 1]
+  for (let i = 0; i < STOPS.length - 1; i++) {
+    const [t0, c0] = STOPS[i]
+    const [t1, c1] = STOPS[i + 1]
     if (t >= t0 && t <= t1) {
       const f = (t - t0) / (t1 - t0)
       return [
@@ -22,14 +22,7 @@ function ramp(v) {
       ]
     }
   }
-  return stops[stops.length - 1][1]
-}
-
-function fmtTime(s) {
-  if (!isFinite(s) || s < 0) return '0:00'
-  const m = Math.floor(s / 60)
-  const sec = Math.floor(s % 60)
-  return `${m}:${sec.toString().padStart(2, '0')}`
+  return STOPS[STOPS.length - 1][1]
 }
 
 // ~5 evenly spaced time ticks across the clip (aligns with the linear scrubber).
@@ -40,6 +33,22 @@ function timeTicks(duration) {
     const t = (duration * i) / n
     return { t, pos: i / n }
   })
+}
+
+const STRIP_PX = 96      // strip height (Tailwind h-24)
+const MIN_TICK_GAP = 14  // px — closer Hz ticks than this overlap as text
+
+// Drop any Hz tick closer than MIN_TICK_GAP to its neighbour. Walks from the
+// top down so the high, well-spaced ticks win and the crowded low end thins
+// out (250 goes when it collides with 500).
+export function visibleFreqTicks(ticks, heightPx = STRIP_PX) {
+  const sorted = [...ticks].sort((a, b) => b.pos - a.pos)
+  const kept = []
+  for (const tk of sorted) {
+    const last = kept[kept.length - 1]
+    if (!last || (last.pos - tk.pos) * heightPx >= MIN_TICK_GAP) kept.push(tk)
+  }
+  return kept
 }
 
 // The mel-spectrogram painted to a crisp, container-filling strip with a
@@ -109,57 +118,65 @@ export default function Spectrogram({ spectrogram, progress = 0, duration = 0 })
     return () => { ro.disconnect(); window.removeEventListener('orientationchange', draw) }
   }, [spectrogram, hasData])
 
-  const fTicks = useMemo(() => (hasData ? spectrogram.freq_ticks || [] : []), [spectrogram, hasData])
+  const fTicks = useMemo(
+    () => (hasData ? visibleFreqTicks(spectrogram.freq_ticks || []) : []),
+    [spectrogram, hasData],
+  )
   const tTicks = useMemo(() => timeTicks(duration), [duration])
 
   if (!hasData) {
     return (
-      <div className="h-24 grid place-items-center text-[11px] text-slate-600 rounded-md bg-black/30 border border-white/10">
+      <div className="h-24 grid place-items-center rounded-[10px] border border-night-line bg-night text-xs text-muted-foreground">
         spectrogram appears once a clip is loaded
       </div>
     )
   }
 
-  const GUTTER = 34 // px, left frequency-label column
+  const GUTTER = 36 // px, left frequency-label column
 
   return (
-    <div className="rounded-md border border-white/10 bg-black/30 p-2">
+    <div>
       <div className="flex">
         {/* Frequency axis (Hz, log/mel-spaced) */}
-        <div className="relative w-[34px] shrink-0 h-24 mr-1 text-[9px] leading-none text-slate-400">
+        <div
+          className="relative shrink-0 h-24 mr-2 font-mono text-[11px] leading-none text-muted-foreground"
+          style={{ width: GUTTER }}
+          title="Frequency (Hz)"
+        >
           {fTicks.map((ft) => (
-            <div
+            <span
               key={ft.hz}
-              className="absolute right-1 flex items-center gap-1 -translate-y-1/2"
+              className="absolute right-0 translate-y-1/2 tabular-nums"
               style={{ bottom: `${ft.pos * 100}%` }}
             >
-              <span className="tabular-nums">{ft.label}</span>
-            </div>
+              {ft.label}
+            </span>
           ))}
-          <div className="absolute -left-0.5 top-0 bottom-0 flex items-center">
-            <span className="text-[8px] text-slate-500 -rotate-90 whitespace-nowrap origin-center">Hz</span>
-          </div>
         </div>
 
         {/* Spectrogram image + playhead + freq gridlines */}
-        <div ref={wrapRef} className="relative flex-1 h-24 rounded-sm overflow-hidden bg-black/40">
+        <div ref={wrapRef} className="relative flex-1 h-24 rounded-md overflow-hidden bg-[#16201A]">
           <canvas ref={canvasRef} className="block h-full w-full" />
           {fTicks.map((ft) => (
             <div
               key={ft.hz}
-              className="absolute left-0 right-0 h-px bg-white/10 pointer-events-none"
+              className="absolute left-0 right-0 h-px bg-cream/[0.06] pointer-events-none"
               style={{ bottom: `${ft.pos * 100}%` }}
             />
           ))}
           <div
-            className="absolute top-0 bottom-0 w-px bg-white/90 pointer-events-none"
+            data-testid="spectrogram-playhead"
+            className="absolute top-0 bottom-0 w-0.5 -ml-px bg-amber pointer-events-none"
             style={{ left: `${Math.min(100, Math.max(0, progress * 100))}%` }}
           />
         </div>
       </div>
 
-      {/* Time axis (mm:ss) — aligned under the image, offset by the gutter */}
-      <div className="relative h-4 mt-1 text-[9px] leading-none text-slate-400" style={{ marginLeft: GUTTER + 4 }}>
+      {/* Time axis (m:ss) — aligned under the image, offset by the gutter */}
+      <div
+        className="relative h-4 mt-2 font-mono text-[11px] leading-none text-muted-foreground"
+        style={{ marginLeft: GUTTER + 8 }}
+      >
         {tTicks.map((tt, i) => (
           <span
             key={i}
@@ -169,7 +186,7 @@ export default function Spectrogram({ spectrogram, progress = 0, duration = 0 })
               transform: i === 0 ? 'none' : i === tTicks.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
             }}
           >
-            {fmtTime(tt.t)}
+            {fmtClock(tt.t)}
           </span>
         ))}
       </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Loader2, Mic, Square, Upload } from 'lucide-react'
+import { HardDrive, Loader2, Mic, Square, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -8,29 +8,30 @@ import {
 import { useRecorder } from '../lib/useRecorder.js'
 import { uploadAudio, captureMic, friendlyError } from '../lib/api.js'
 
-// Toolbar buttons keep Echo's existing neutral translucent look (bg-white/10,
-// hover bg-white/20) rather than shadcn Button's default filled "secondary"
-// look — passed as an explicit className override on top of the primitive so
-// the pixel-level identity Echo already has is preserved (Part A goal), while
-// still getting Button's real value: focus-visible ring, disabled state,
-// consistent sizing, and a slot for the loading spinner.
-const TOOLBAR_BTN = 'bg-white/10 hover:bg-white/20 text-slate-100'
+// Header controls (DESIGN_V2.md §4.3): 44px-tall targets. Secondary actions
+// are outlined night-2 tiles; Record is the rust primary pill.
+export const HEADER_BTN =
+  'h-11 rounded-[10px] border border-night-line bg-night-2 px-4 text-[15px] font-medium text-cream shadow-none ' +
+  'hover:bg-night-3 focus-visible:ring-2'
+const RECORD_BTN =
+  'h-11 rounded-full bg-rust px-5 text-[15px] font-semibold text-white shadow-none hover:bg-rust/90 focus-visible:ring-2'
 
 // Toolbar: file upload (picker) + browser recording + Pi mic capture.
 // Reports work through onStatus('processing'|'idle'|'error', msg) and
-// onResult(apiResponse). Surfaces a toast on every success/failure so nothing
+// onResult(apiResponse, { kind, name }) — kind is 'upload' | 'recording' |
+// 'pi_mic', which the sidebar's clip card uses to say where the clip came from. Surfaces a toast on every success/failure so nothing
 // fails silently or vaguely (recall the historical "Failed to fetch" issue).
 export default function Controls({ busy, onStatus, onResult, autoRecord = false }) {
   const fileRef = useRef(null)
   const [captureSecs, setCaptureSecs] = useState('5')
   const [inFlight, setInFlight] = useState(null) // 'upload' | 'capture' | null — which button is spinning
 
-  async function runUpload(fileOrBlob, name) {
+  async function runUpload(fileOrBlob, name, kind = 'upload') {
     setInFlight('upload')
     onStatus('processing', 'Analyzing audio…')
     try {
       const res = await uploadAudio(fileOrBlob, name)
-      onResult(res)
+      onResult(res, { kind, name })
       onStatus('idle')
       toast.success('Uploaded', { description: name })
     } catch (e) {
@@ -42,7 +43,7 @@ export default function Controls({ busy, onStatus, onResult, autoRecord = false 
     }
   }
 
-  const recorder = useRecorder((blob, name) => runUpload(blob, name))
+  const recorder = useRecorder((blob, name) => runUpload(blob, name, 'recording'))
 
   async function startRecording() {
     try {
@@ -78,7 +79,7 @@ export default function Controls({ busy, onStatus, onResult, autoRecord = false 
     onStatus('processing', `Recording ${captureSecs}s on the Pi mic…`)
     try {
       const res = await captureMic(Number(captureSecs))
-      onResult(res)
+      onResult(res, { kind: 'pi_mic' })
       onStatus('idle')
       toast.success('Captured', { description: `${captureSecs}s from the Pi mic` })
     } catch (e) {
@@ -93,7 +94,7 @@ export default function Controls({ busy, onStatus, onResult, autoRecord = false 
   const recPct = Math.min(100, (recorder.elapsed / recorder.maxSeconds) * 100)
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
       <input
         ref={fileRef}
         type="file"
@@ -102,30 +103,20 @@ export default function Controls({ busy, onStatus, onResult, autoRecord = false 
         onChange={onPick}
       />
 
-      <Button
-        onClick={() => fileRef.current?.click()}
-        disabled={busy}
-        title="Upload an audio or video file"
-        className={TOOLBAR_BTN}
-      >
-        {inFlight === 'upload' ? <Loader2 className="animate-spin" /> : <Upload />}
-        Upload file
-      </Button>
-
       {recorder.supported ? (
         recorder.recording ? (
           <div className="flex items-center gap-2">
-            <Button onClick={recorder.stop} variant="destructive" title="Stop recording">
+            <Button onClick={recorder.stop} title="Stop recording" className={RECORD_BTN}>
               <span className="relative flex h-2 w-2" aria-hidden>
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/70" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
               </span>
               <Square className="fill-current" />
-              Stop {Math.ceil(recorder.maxSeconds - recorder.elapsed)}s
+              <span className="tabular-nums">Stop {Math.ceil(recorder.maxSeconds - recorder.elapsed)}s</span>
             </Button>
-            <div className="w-24 h-1.5 bg-white/10 rounded overflow-hidden">
+            <div className="w-24 h-1.5 bg-night-3 rounded-full overflow-hidden">
               <div
-                className="h-full bg-rose-400 transition-[width] duration-200 ease-linear"
+                className="h-full bg-amber transition-[width] duration-200 ease-linear"
                 style={{ width: `${recPct}%` }}
               />
             </div>
@@ -135,36 +126,49 @@ export default function Controls({ busy, onStatus, onResult, autoRecord = false 
             onClick={startRecording}
             disabled={busy}
             title="Record from your device mic (max 60s)"
-            className={TOOLBAR_BTN}
+            className={RECORD_BTN}
           >
-            <span className="h-2.5 w-2.5 rounded-full bg-rose-500" aria-hidden />
+            <Mic />
             Record
           </Button>
         )
       ) : (
-        <span className="text-xs text-slate-500">recording unsupported here</span>
+        <span className="text-xs text-muted-foreground">recording unsupported here</span>
       )}
 
-      <div className="flex items-center gap-1 ml-1">
+      <Button
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        title="Upload an audio or video file"
+        className={HEADER_BTN}
+      >
+        {inFlight === 'upload' ? <Loader2 className="animate-spin" /> : <Upload />}
+        Upload
+      </Button>
+
+      {/* Pi mic: one outlined tile holding the capture button and its
+          duration chip. */}
+      <div className="flex h-11 items-center rounded-[10px] border border-night-line bg-night-2 pr-1.5">
         <Button
           onClick={runCapture}
           disabled={busy}
           title="Record from the Pi's USB mic"
-          className={TOOLBAR_BTN}
+          className="h-full rounded-l-[9px] rounded-r-none bg-transparent pl-4 pr-2.5 text-[15px] font-medium text-cream shadow-none hover:bg-night-3 focus-visible:ring-2"
         >
-          {inFlight === 'capture' ? <Loader2 className="animate-spin" /> : <Mic />}
+          {inFlight === 'capture' ? <Loader2 className="animate-spin" /> : <HardDrive />}
           Pi mic
         </Button>
         <Select value={captureSecs} onValueChange={setCaptureSecs} disabled={busy}>
           <SelectTrigger
-            className="w-[4.5rem] h-9 bg-white/10 hover:bg-white/20 border-none text-sm text-slate-100 focus:ring-1 focus:ring-ring"
+            className="h-8 w-auto gap-1.5 rounded-md border-none bg-night-3 px-2 font-mono text-xs text-cream shadow-none hover:bg-night-line focus:ring-2 focus:ring-ring"
             title="Capture duration"
+            aria-label="Capture duration"
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="bg-popover text-popover-foreground border-border">
             {[3, 5, 10, 15, 30, 60].map((s) => (
-              <SelectItem key={s} value={String(s)}>{s}s</SelectItem>
+              <SelectItem key={s} value={String(s)} className="font-mono text-xs">{s} s</SelectItem>
             ))}
           </SelectContent>
         </Select>

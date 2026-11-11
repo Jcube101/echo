@@ -1259,3 +1259,98 @@ request. See LEARNINGS.md.
 - `/app?record=1` starts recording after the permission prompt.
 
 With that, every "done when" item for S1 is met.
+
+---
+
+# Session 11 — Design v2 S2: tokens + desktop app reskin (2026-11-12)
+
+Scope: DESIGN_V2.md §7 item 2. Frontend only — no backend, API, extraction,
+schema or storage change. Job's decisions going in: D4 and D5 follow the
+design; D6 (camera presets) left out.
+
+## What was built
+
+- **Tokens + fonts:** §3 colours in `tailwind.config.js`; shadcn variables in
+  `index.css` remapped onto them; Fraunces / Instrument Sans / IBM Plex Mono
+  self-hosted via `@fontsource` (latin files precached by the service worker).
+- **Header:** wordmark (links to `/`), pill tabs "3D Trail / Spectral panel",
+  rust Record, Upload, Pi mic with a duration chip, divider, Samples, History.
+  Icons + words; no emoji left in the app (header, sheets, attribution).
+- **Stage (D4):** `night` background; trail green → amber → cream by loudness;
+  cream playhead glow + ring; mono caption; Quiet → Loud legend.
+- **Dock (D5):** cream play/pause, "0:04 / 0:14", amber seek bar, spectrogram
+  on the new ramp with an amber playhead; Hz ticks closer than 14px dropped.
+- **Sidebar (≥1200px):** clip card (replaces the attribution chip there),
+  "Where the playhead is" readout (Pitch/Timbre/Motion on −3…+3, Loudness %),
+  the three latest clips, link to the History sheet.
+- **Spectral panel:** seven stacked lanes; label column with colour square,
+  name as an `aria-pressed` toggle and the value at the playhead; amber
+  playhead with a time tag; hover readout and click-to-seek kept.
+  Spectral Crest `#008300` → `#2FA02F`.
+
+## Automated suites
+
+| Suite | Result |
+|---|---|
+| `pytest` (default run) | **99 passed**, 6 deselected (no backend change) |
+| Vitest | **50 passed** (2 new: Hz tick thinning, loudness colour ramp) |
+| Playwright | **19 passed, 1 failed** — the failure is E2E-010 again (no audio session on the Pi; TEST_PLAN.md), unchanged |
+| `npm run build` | OK; precache 16 entries (1524 KiB); `dist` 1.8 MB |
+
+Selector changes caused by the reskin: the spectrogram playhead is found by
+`data-testid="spectrogram-playhead"` instead of the old `.bg-white/90` class
+(one Vitest test, one e2e spec). Everything else kept its existing titles and
+text, so no other test needed touching. New `e2e/specs/desktop-workspace.spec.mjs`
+(3 tests): sidebar clip card / live readout / recent clips; lane toggles with
+`aria-pressed`; below 1200px the sidebar gives way to the attribution chip.
+
+## Visual check against the mockups
+
+Screenshots at 1440×900 from the public URL, Common Myna scrubbed to 0:04
+(same state as `docs/design-v2/03` and `04`), in
+`verification/design_v2_s2/` (gitignored, on the Pi): `trail.png`,
+`spectral.png`, `spectral-hover.png`, `samples-sheet.png`,
+`history-sheet.png`, `idle.png`, `w1024.png`, `w390.png`. Layout, proportions
+and the sidebar numbers (Pitch +2.56, Timbre +0.35, Motion −0.97, Loudness 1%)
+match the mockup. Zero console/page errors in the run.
+
+Live after `sudo -n systemctl restart echo` (`is-active` → active): `/` and
+`/app` 200 HTML, `/history` and `/samples` 200 JSON, manifest 200, and `/app`
+references the freshly built asset hashes.
+
+## Contrast
+
+| Pair | Ratio |
+|---|---|
+| Spectral Crest `#2FA02F` on `night` | 5.2:1 (old `#008300`: 3.6:1) |
+| `muted` `#A9B0A0` on `night-2` / `night-3` | 7.2:1 / 6.2:1 |
+| White on `rust` | 5.0:1 |
+| `amber` on `night-2` | 8.2:1 |
+
+Crest and Flatness are both greens. Lightening Crest brought them slightly
+closer (CIE76 ΔE 38 → 34), still well apart; each lane is also named, so the
+two are never told apart by colour alone. The project has no dataviz validator
+script, so this was checked by hand.
+
+## Deviations from the brief / mockups
+
+1. **Token names.** `ink` now holds the brief's `#1F2A22` (the old
+   `ink`/`panel` app colours are gone; the app uses `night`). The brief's
+   `muted` text colour is `text-muted-foreground`, because `bg-muted` is a
+   shadcn surface.
+2. **"Scroll to zoom"** is not in the caption: zoom stays locked (fixed
+   framing keeps clips comparable).
+3. **Axis ticks and axis names** in the 3D box are kept as they were (the
+   mockup shows names with arrows and no ticks). Only their colours changed.
+4. **Header button shape.** The PNG draws every header button as a rounded
+   rectangle; §3 says primary buttons are pills. Text wins: Record is a pill,
+   the secondary buttons are 10px rounded rectangles.
+5. **History clips** show "Upload or recording" with date and duration. The
+   mockup's "Recorded in browser" and "Uploaded · filename" appear only for a
+   clip made in the current session, because `/history` stores neither a
+   filename nor the upload/recording distinction.
+6. **"All 50"** reads "All N" with the real history count (39 today).
+7. **Sidebar breakpoint** is 1200px (not every "desktop" width): at 1024px
+   the 360px sidebar left the stage too narrow.
+8. **Pi mic default** stays 5 s (mockup shows 10 s).
+9. **Trail blending** changed from additive to normal — see LEARNINGS.md.

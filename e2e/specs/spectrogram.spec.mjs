@@ -20,7 +20,7 @@ test('spectrogram renders with frequency/time axes and a moving playhead', async
   await expect(page.getByText(/^(250|500|1k|2k|4k|8k)$/).first()).toBeVisible()
   await expect(page.getByText('0:00').first()).toBeVisible()
 
-  const playhead = page.locator('.bg-white\\/90')
+  const playhead = page.getByTestId('spectrogram-playhead')
   const before = await playhead.evaluate((el) => el.style.left)
 
   const slider = page.getByRole('slider', { name: 'Seek' })

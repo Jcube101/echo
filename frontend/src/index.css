@@ -2,52 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
-/* shadcn/ui theme variables — mapped to Echo's EXISTING palette, not shadcn's
-   own defaults (Part A, shadcn polish session). Every value here is the exact
-   HSL conversion of a color Echo already uses somewhere in the app, so shadcn
-   primitives inherit Echo's look precisely rather than introducing a new one:
-     --background        ink       #0a0a12   (page background)
-     --card / --popover   panel     #12121c   (drawers, dropdowns, tooltips —
-                                                same surface as the History/
-                                                Samples asides already use)
-     --foreground         base text #e8e8f0   (already the global text color)
-     --muted-foreground   slate-400 #94a3b8   (existing secondary-text convention)
-     --primary            indigo-500 #6366f1  (Echo's existing interactive
-                                                accent — the Samples "Visualize"
-                                                button, seek-slider accent, and
-                                                Gallery/Samples "selected" ring
-                                                are already this hue; the signature
-                                                teal stays reserved for the 3D
-                                                trail only, per this session's
-                                                off-limits rule)
-     --destructive        rose-500  #f43f5e   (existing error-toast / Stop-button red)
-     --ring                indigo-400 #818cf8 (focus ring — same accent family,
-                                                doesn't compete with the trail's teal)
-   --border/--input/--muted/--accent are plain white; tailwind.config.js bakes a
-   FIXED alpha onto each (0.1/0.15/0.08/0.1) so `border-border`, `bg-muted`, etc.
-   render as literally the same translucent white-over-dark overlay Echo already
-   uses everywhere (bg-white/10, border-white/10) — not a new opaque theme color. */
+/* shadcn/ui theme variables — mapped onto the Design v2 tokens
+   (DESIGN_V2.md §3; hex values live in tailwind.config.js). Each value is the
+   HSL conversion of one token, so shadcn primitives (Sheet, Select, Tabs,
+   toasts) wear the v2 look without any structural change:
+     --background              night       #121A15
+     --card / --popover        night-2     #1A241D
+     --secondary/muted/accent  night-3     #223027
+     --border / --input        night-line  #2E3D33
+     --foreground              cream       #F4EFE4
+     --muted-foreground        muted       #A9B0A0  (the brief's `muted` text)
+     --primary                 rust        #B5532A  (white text passes 4.5:1)
+     --ring                    amber       #E8B04B
+   --destructive stays the existing rose (#f43f5e): it marks errors only, so it
+   must not read as the rust record/CTA colour. */
 :root {
-  --background: 240 28.6% 5.5%;
-  --foreground: 240 21.1% 92.5%;
-  --card: 240 21.7% 9.0%;
-  --card-foreground: 240 21.1% 92.5%;
-  --popover: 240 21.7% 9.0%;
-  --popover-foreground: 240 21.1% 92.5%;
-  --primary: 238.7 83.5% 66.7%;
+  --background: 142.5 18.2% 8.6%;
+  --foreground: 41.2 42.1% 92.5%;
+  --card: 138 16.1% 12.2%;
+  --card-foreground: 41.2 42.1% 92.5%;
+  --popover: 138 16.1% 12.2%;
+  --popover-foreground: 41.2 42.1% 92.5%;
+  --primary: 17.7 62.3% 43.7%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 100%;
-  --secondary-foreground: 240 21.1% 92.5%;
-  --muted: 0 0% 100%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 0 0% 100%;
-  --accent-foreground: 240 21.1% 92.5%;
+  --secondary: 141.4 17.1% 16.1%;
+  --secondary-foreground: 41.2 42.1% 92.5%;
+  --muted: 141.4 17.1% 16.1%;
+  --muted-foreground: 86.2 9.2% 65.9%;
+  --accent: 141.4 17.1% 16.1%;
+  --accent-foreground: 41.2 42.1% 92.5%;
   --destructive: 349.7 89.2% 60.2%;
   --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 100%;
-  --input: 0 0% 100%;
-  --ring: 234.5 89.5% 73.9%;
-  --radius: 0.5rem;
+  --border: 140 14% 21%;
+  --input: 140 14% 21%;
+  --ring: 38.6 77.3% 60.2%;
+  --radius: 0.625rem;
 }
 
 /* Respect prefers-reduced-motion (Part C accessibility floor): collapse all
@@ -65,14 +54,58 @@
 html, body, #root {
   height: 100%;
   margin: 0;
-  background: #0a0a12;
-  color: #e8e8f0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #121A15;
+  color: #F4EFE4;
+  font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 canvas { touch-action: none; }
 
-/* Thin scrollbars for the gallery strip */
+/* Thin scrollbars for the sheets and sidebar */
 .scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
-.scroll-thin::-webkit-scrollbar-thumb { background: #2a2a3c; border-radius: 4px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #2E3D33; border-radius: 4px; }
+
+/* Seek bar (dock): amber fill up to the playhead, cream thumb. The filled
+   width comes from --pct, set inline by PlaybackBar. Stays a real
+   <input type="range"> so keyboard and screen-reader seeking keep working. */
+.echo-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+.echo-range:disabled { cursor: default; opacity: 0.4; }
+.echo-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #E8B04B var(--pct, 0%), #2E3D33 var(--pct, 0%));
+}
+.echo-range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #2E3D33;
+}
+.echo-range::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: #E8B04B;
+}
+.echo-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #F4EFE4;
+  border: none;
+}
+.echo-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #F4EFE4;
+  border: none;
+}
+.echo-range:focus-visible { outline: 2px solid #E8B04B; outline-offset: 4px; border-radius: 999px; }

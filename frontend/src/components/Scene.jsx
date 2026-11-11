@@ -12,10 +12,15 @@ const CAM_DIST = 11.2
 const CAM_POS = CAM_DIR.clone().multiplyScalar(CAM_DIST)
 const POLAR_ANGLE = Math.acos(CAM_DIR.y) // ≈ 1.13 rad — locked min == max
 
-const GRID = '#243044'
-const BOXCOL = '#33405a'
-const TICKCOL = '#5b6b86'
-const TEAL = '#3df0c0'
+// Design v2 stage colours (DESIGN_V2.md §3 / D4): `night` background, box and
+// grid in night-line tones, trail coloured by loudness (see lib/features.js).
+const STAGE_BG = '#121A15'
+const GRID = '#26342B'
+const BOXCOL = '#3F5246'
+const TICKCOL = '#7D8676'
+const AXISCOL = '#A9B0A0'
+const TRAIL_LINE = '#4F8F63'
+const CREAM = '#F4EFE4'
 
 // --- Soft radial glow sprite (built once) ------------------------------------
 function makeGlow() {
@@ -173,19 +178,19 @@ function WorldBox() {
       <Ticks axis="motion" />
 
       <Billboard position={[0, -WORLD - 0.95, WORLD + 0.5]}>
-        <Text fontSize={0.5} color="#aab8d4">Pitch</Text>
+        <Text fontSize={0.5} color={AXISCOL}>Pitch</Text>
       </Billboard>
       <Billboard position={[WORLD + 1.15, -WORLD - 0.5, 0]}>
-        <Text fontSize={0.5} color="#aab8d4">Timbre</Text>
+        <Text fontSize={0.5} color={AXISCOL}>Timbre</Text>
       </Billboard>
       <Billboard position={[-WORLD - 1.15, 0.2, WORLD]}>
-        <Text fontSize={0.5} color="#aab8d4">Motion</Text>
+        <Text fontSize={0.5} color={AXISCOL}>Motion</Text>
       </Billboard>
     </group>
   )
 }
 
-// --- Monochrome glowing point cloud (single draw call) -----------------------
+// --- Glowing point cloud, coloured by loudness (single draw call) -----------------------
 function GlowPoints({ geo }) {
   const gl = useThree((s) => s.gl)
   const geom = useMemo(() => {
@@ -198,10 +203,17 @@ function GlowPoints({ geo }) {
   const mat = useMemo(() => new THREE.ShaderMaterial({
     uniforms: { uTex: { value: GLOW }, scale: { value: 105 * gl.getPixelRatio() } },
     vertexShader: VERT, fragmentShader: FRAG,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false,
+    // Normal (premultiplied-alpha) blending, not additive: overlapping points
+    // must keep their loudness colour instead of summing to white, or a dense
+    // loud passage reads as one blown-out blob (Design v2, D4).
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
   }), [gl])
   useEffect(() => () => geom.dispose(), [geom])
-  return <points geometry={geom} material={mat} />
+  // renderOrder: draw the points over the thin connecting line.
+  return <points geometry={geom} material={mat} renderOrder={1} />
 }
 
 function Trail({ geo, highlightIndex }) {
@@ -220,14 +232,24 @@ function Trail({ geo, highlightIndex }) {
   return (
     <>
       {geo.n >= 2 && (
-        <Line points={linePoints} color={TEAL} lineWidth={1} transparent opacity={0.16} />
+        <Line points={linePoints} color={TRAIL_LINE} lineWidth={1} transparent opacity={0.3} />
       )}
       <GlowPoints geo={geo} />
       {hi && (
-        <sprite position={hi} scale={[0.9, 0.9, 0.9]}>
-          <spriteMaterial map={GLOW} color={'#c9fff0'} transparent depthWrite={false}
-                          blending={THREE.AdditiveBlending} />
-        </sprite>
+        <>
+          {/* Playhead marker: a cream glow with a thin ring around it, so the
+              current moment stays findable inside a dense, bright cluster. */}
+          <sprite position={hi} scale={[0.55, 0.55, 0.55]}>
+            <spriteMaterial map={GLOW} color={CREAM} transparent depthWrite={false}
+                            blending={THREE.AdditiveBlending} />
+          </sprite>
+          <Billboard position={hi}>
+            <mesh>
+              <ringGeometry args={[0.24, 0.27, 48]} />
+              <meshBasicMaterial color={CREAM} transparent opacity={0.9} depthTest={false} />
+            </mesh>
+          </Billboard>
+        </>
       )}
     </>
   )
@@ -243,7 +265,7 @@ export default function Scene({ features, highlightIndex = null }) {
         gl={{ antialias: true, preserveDrawingBuffer: true }}
         dpr={[1, 2]}
       >
-        <color attach="background" args={['#080810']} />
+        <color attach="background" args={[STAGE_BG]} />
 
         <WorldBox />
         {geo.n > 0 && <Trail geo={geo} highlightIndex={highlightIndex} />}

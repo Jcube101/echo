@@ -8,12 +8,13 @@
 // plotted line uses `norm()` (0..1 within the lane).
 //
 // Colours are the dataviz reference categorical palette (dark steps), validated
-// colourblind-safe on this dark surface; the legend + hover readout name each
-// line so identity is never colour-alone.
+// colourblind-safe on a dark surface; the label column + hover readout name each
+// line so identity is never colour-alone. Design v2: Spectral Crest moved from
+// #008300 to #2FA02F so it reads on `night` (contrast 5.2:1, was 3.6:1).
 
 export const PANEL_FEATURES = [
   { key: 'spread',   label: 'Spectral Spread',   unit: 'Hz', range: [0, 4000],        color: '#3987e5', fmt: (v) => v.toFixed(0) },
-  { key: 'crest',    label: 'Spectral Crest',    unit: '',   range: [1, 30],          color: '#008300', fmt: (v) => v.toFixed(1) },
+  { key: 'crest',    label: 'Spectral Crest',    unit: '',   range: [1, 30],          color: '#2FA02F', fmt: (v) => v.toFixed(1) },
   { key: 'contrast', label: 'Spectral Contrast', unit: 'dB', range: [10, 35],         color: '#d55181', fmt: (v) => v.toFixed(1) },
   { key: 'slope',    label: 'Spectral Slope',    unit: '',   range: [-0.001, 0.0002], color: '#c98500', fmt: (v) => v.toExponential(2) },
   { key: 'flatness', label: 'Spectral Flatness', unit: '',   range: [0, 0.25],        color: '#199e70', fmt: (v) => v.toFixed(4) },

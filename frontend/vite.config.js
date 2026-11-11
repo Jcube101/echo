@@ -39,6 +39,10 @@ export default defineConfig({
         // /samples (JSON API routes on this same origin) in a browser tab.
         // Allowlist only the two SPA entry points so everything else always
         // reaches FastAPI.
+        // Precache the latin font files too, so the installed app keeps its
+        // typefaces offline (other subsets load on demand from the network).
+        globPatterns: ['**/*.{js,css,html}', 'assets/*-latin-*.woff2'],
+        globIgnores: ['assets/*-latin-ext-*.woff2'],
         navigateFallback: '/index.html',
         navigateFallbackAllowlist: [/^\/(\?.*)?$/, /^\/app([/?].*)?$/],
       },

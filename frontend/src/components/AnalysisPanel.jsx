@@ -2,38 +2,31 @@ import React, { useMemo, useRef, useState } from 'react'
 import { PANEL_FEATURES, normalize } from '../lib/panelFeatures.js'
 import { indexForTime } from '../lib/nearestIndex.js'
 
-// v1.5 Spectral Analysis panel — a 2D multi-line time-series view, a genuinely
-// separate view from the 3D trail (App swaps between them via a header toggle).
-// Six/seven engineered spectral descriptors plotted against the SAME time axis
-// as the spectrogram/scrubber; the playhead marker is driven by the shared
-// `playheadSec` state, so dragging the main scrubber moves it here too. A
-// hover/tap readout shows every line's exact value at the cursor — a 7-line
-// chart is unreadable without one.
+// Spectral panel (v1.5; Design v2 layout, DESIGN_V2.md §4.4) — a 2D view that
+// is genuinely separate from the 3D trail. Seven engineered spectral
+// descriptors, each in its own lane, stacked on the SAME time axis as the
+// spectrogram/scrubber. On the left, a label column names each lane (the name
+// is a toggle that hides/shows its line) and shows its value at the playhead.
+// The amber playhead runs through every lane and is driven by the shared
+// `playheadSec`; hovering the chart shows every line's exact value at the
+// cursor, and clicking seeks.
 //
-// Rendered as an SVG with a fixed viewBox stretched to the container
+// Each lane is an SVG with a fixed viewBox stretched to its box
 // (preserveAspectRatio="none"); `vector-effect: non-scaling-stroke` keeps line
-// weight crisp regardless of the horizontal stretch. Text (legend, readout,
-// axes) is HTML positioned over the SVG so it never distorts.
+// weight crisp regardless of the stretch. All text is HTML, so it never distorts.
 
-const VB_W = 1000 // viewBox width (arbitrary; stretched to container)
-const VB_H = 260  // viewBox height
+const VB_W = 1000 // lane viewBox width (arbitrary; stretched to the lane)
+const VB_H = 100  // lane viewBox height
+const PAD = 12    // keeps a line off the lane's top/bottom edge
 
-function fmtTime(s) {
-  if (!isFinite(s) || s < 0) return '0:00'
-  const m = Math.floor(s / 60)
-  const sec = Math.floor(s % 60)
-  return `${m}:${sec.toString().padStart(2, '0')}`
-}
-
-function timeTicks(duration) {
-  if (!duration || duration <= 0) return []
-  const n = 4
-  return Array.from({ length: n + 1 }, (_, i) => ({ t: (duration * i) / n, pos: i / n }))
+function fmtValue(pf, v) {
+  if (typeof v !== 'number' || !isFinite(v)) return '—'
+  return pf.fmt(v) + (pf.unit ? ` ${pf.unit}` : '')
 }
 
 export default function AnalysisPanel({ features, duration, playheadSec, onSeek }) {
   const wrapRef = useRef(null)
-  const [hidden, setHidden] = useState(() => new Set()) // legend toggles
+  const [hidden, setHidden] = useState(() => new Set()) // lanes toggled off
   const [hoverX, setHoverX] = useState(null)            // 0..1 fraction, or null
 
   const dur = duration || (features.length ? features[features.length - 1].t : 0)
@@ -47,7 +40,7 @@ export default function AnalysisPanel({ features, duration, playheadSec, onSeek 
       for (let i = 0; i < features.length; i++) {
         const f = features[i]
         const x = (f.t / dur) * VB_W
-        const y = VB_H - normalize(pf, f[pf.key]) * VB_H
+        const y = VB_H - PAD - normalize(pf, f[pf.key]) * (VB_H - 2 * PAD)
         d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2) + ' '
       }
       out[pf.key] = d
@@ -55,12 +48,10 @@ export default function AnalysisPanel({ features, duration, playheadSec, onSeek 
     return out
   }, [features, dur])
 
-  const gridY = [0, 0.25, 0.5, 0.75, 1]
-  const tTicks = useMemo(() => timeTicks(dur), [dur])
-
   const playheadFrac = dur > 0 ? Math.min(1, Math.max(0, playheadSec / dur)) : 0
+  const playFrame = features.length ? features[indexForTime(features, playheadSec)] : null
 
-  // Cursor (hover) index + its px position for the readout.
+  // Cursor (hover) frame for the readout.
   const hoverIdx = hoverX == null ? null : indexForTime(features, hoverX * dur)
   const hoverFrame = hoverIdx == null ? null : features[hoverIdx]
 
@@ -74,10 +65,6 @@ export default function AnalysisPanel({ features, duration, playheadSec, onSeek 
   function onMove(e) {
     const frac = fracFromEvent(e)
     if (frac != null) setHoverX(frac)
-  }
-
-  function onLeave() {
-    setHoverX(null)
   }
 
   // Click / drag seeks the shared playhead (same time state as the scrubber).
@@ -97,105 +84,108 @@ export default function AnalysisPanel({ features, duration, playheadSec, onSeek 
 
   if (!features.length) {
     return (
-      <div className="h-full grid place-items-center text-sm text-slate-600">
+      <div className="h-full grid place-items-center text-sm text-muted-foreground">
         load a clip to see its spectral descriptors
       </div>
     )
   }
 
-  return (
-    <div className="h-full w-full flex flex-col p-3 sm:p-4 gap-3 overflow-y-auto scroll-thin">
-      {/* Legend — click a chip to toggle its line. Names use the proper
-          spectral terms (identity is never colour-alone). */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1.5">
-        {PANEL_FEATURES.map((pf) => {
-          const off = hidden.has(pf.key)
-          return (
-            <button
-              key={pf.key}
-              onClick={() => toggle(pf.key)}
-              className={'flex items-center gap-1.5 text-[11px] sm:text-xs rounded px-1.5 py-0.5 transition ' +
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-ink ' +
-                (off ? 'opacity-35 hover:opacity-60' : 'hover:bg-white/10')}
-              title={off ? `Show ${pf.label}` : `Hide ${pf.label}`}
-            >
-              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: pf.color }} />
-              <span className="text-slate-200">{pf.label}</span>
-            </button>
-          )
-        })}
-      </div>
+  const m = Math.floor(playheadSec / 60)
+  const timeTag = `${m}:${(playheadSec - m * 60).toFixed(1).padStart(4, '0')} s`
 
-      {/* Chart area */}
-      <div className="relative flex-1 min-h-[220px]">
-        {/* y-axis hint labels (normalized lanes) */}
-        <div className="absolute left-0 top-0 bottom-5 w-8 flex flex-col justify-between text-[9px] text-slate-600 tabular-nums pointer-events-none">
-          <span>max</span>
-          <span>min</span>
+  return (
+    <div className="h-full w-full flex flex-col px-4 sm:px-6 pt-5 pb-4 overflow-y-auto scroll-thin">
+      <div className="flex flex-1 min-h-[392px] gap-3 sm:gap-6">
+        {/* Label column — name toggles the line; value is at the playhead. */}
+        <div className="flex w-[132px] sm:w-[206px] shrink-0 flex-col gap-1.5">
+          {PANEL_FEATURES.map((pf) => {
+            const off = hidden.has(pf.key)
+            return (
+              <div key={pf.key} className="flex min-h-[50px] flex-1 flex-col justify-center">
+                <button
+                  type="button"
+                  onClick={() => toggle(pf.key)}
+                  aria-pressed={!off}
+                  title={off ? `Show ${pf.label}` : `Hide ${pf.label}`}
+                  className={'flex items-center gap-2 self-start rounded text-left text-sm sm:text-[15px] font-semibold text-cream transition-opacity ' +
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-night ' +
+                    (off ? 'opacity-45 hover:opacity-70' : 'hover:opacity-80')}
+                >
+                  <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ background: pf.color }} />
+                  <span className={off ? 'line-through decoration-1' : ''}>{pf.label}</span>
+                </button>
+                <span className={'mt-1.5 pl-[18px] font-mono text-xs tabular-nums text-muted-foreground ' + (off ? 'opacity-45' : '')}>
+                  {playFrame ? fmtValue(pf, playFrame[pf.key]) : '—'}
+                </span>
+              </div>
+            )
+          })}
         </div>
 
+        {/* Lanes + playhead + hover readout */}
         <div
           ref={wrapRef}
-          className="absolute left-8 right-0 top-0 bottom-5 rounded-md border border-white/10 bg-black/30 overflow-hidden cursor-crosshair"
+          className="relative flex min-w-0 flex-1 cursor-crosshair flex-col gap-1.5"
           onPointerMove={onMove}
-          onPointerLeave={onLeave}
+          onPointerLeave={() => setHoverX(null)}
           onPointerDown={onSeekEvent}
           onTouchStart={(e) => { onMove(e); onSeekEvent(e) }}
           onTouchMove={(e) => { onMove(e); onSeekEvent(e) }}
         >
-          <svg
-            viewBox={`0 0 ${VB_W} ${VB_H}`}
-            preserveAspectRatio="none"
-            className="block h-full w-full"
+          {PANEL_FEATURES.map((pf) => (
+            <div key={pf.key} className="min-h-[50px] flex-1 overflow-hidden rounded-sm bg-night-2">
+              <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" className="block h-full w-full">
+                {!hidden.has(pf.key) && (
+                  <path d={paths[pf.key]} fill="none" stroke={pf.color}
+                    strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke" />
+                )}
+              </svg>
+            </div>
+          ))}
+
+          {/* hover cursor line */}
+          {hoverX != null && (
+            <div
+              className="pointer-events-none absolute inset-y-0 w-px border-l border-dashed border-cream/50"
+              style={{ left: `${hoverX * 100}%` }}
+            />
+          )}
+
+          {/* shared playhead (driven by playheadSec) + time tag */}
+          <div
+            data-testid="panel-playhead"
+            className="pointer-events-none absolute inset-y-0 w-0.5 -ml-px bg-amber"
+            style={{ left: `${playheadFrac * 100}%` }}
+          />
+          <div
+            className="pointer-events-none absolute top-1.5 whitespace-nowrap rounded-md border border-night-line bg-night px-2.5 py-1.5 font-mono text-xs tabular-nums text-cream"
+            style={playheadFrac > 0.85
+              ? { right: `calc(${(1 - playheadFrac) * 100}% + 8px)` }
+              : { left: `calc(${playheadFrac * 100}% + 8px)` }}
           >
-            {/* horizontal gridlines */}
-            {gridY.map((g) => (
-              <line key={g} x1={0} x2={VB_W} y1={g * VB_H} y2={g * VB_H}
-                stroke="rgba(255,255,255,0.07)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-            ))}
-            {/* vertical time gridlines */}
-            {tTicks.map((tt, i) => (
-              <line key={i} x1={tt.pos * VB_W} x2={tt.pos * VB_W} y1={0} y2={VB_H}
-                stroke="rgba(255,255,255,0.05)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-            ))}
-            {/* feature lines */}
-            {PANEL_FEATURES.map((pf) => (
-              hidden.has(pf.key) ? null : (
-                <path key={pf.key} d={paths[pf.key]} fill="none" stroke={pf.color}
-                  strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke" opacity={0.95} />
-              )
-            ))}
-            {/* hover cursor line */}
-            {hoverX != null && (
-              <line x1={hoverX * VB_W} x2={hoverX * VB_W} y1={0} y2={VB_H}
-                stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeDasharray="4 3"
-                vectorEffect="non-scaling-stroke" />
-            )}
-            {/* shared playhead (driven by playheadSec) */}
-            <line x1={playheadFrac * VB_W} x2={playheadFrac * VB_W} y1={0} y2={VB_H}
-              stroke="rgba(45,212,191,0.95)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
-          </svg>
+            {timeTag}
+          </div>
 
           {/* Hover readout — every visible line's exact value at the cursor. */}
           {hoverFrame && (
             <div
-              className="absolute top-1 z-10 pointer-events-none rounded-md border border-border bg-popover/95 text-popover-foreground backdrop-blur px-2 py-1.5 text-[10.5px] shadow-lg animate-in fade-in-0 zoom-in-95 duration-100"
+              className="absolute top-10 z-10 pointer-events-none rounded-[10px] border border-border bg-popover/95 text-popover-foreground backdrop-blur px-3 py-2 text-xs shadow-lg animate-in fade-in-0 zoom-in-95 duration-100"
               style={{
-                left: `calc(${hoverX * 100}% ${hoverX > 0.6 ? '- 168px' : '+ 8px'})`,
-                minWidth: 150,
+                left: `calc(${hoverX * 100}% ${hoverX > 0.6 ? '- 228px' : '+ 10px'})`,
+                width: 218,
               }}
             >
-              <div className="text-slate-400 tabular-nums mb-1">t = {hoverFrame.t.toFixed(2)}s</div>
+              <div className="mb-1.5 font-mono tabular-nums text-muted-foreground">t = {hoverFrame.t.toFixed(2)} s</div>
               {PANEL_FEATURES.map((pf) => (
                 hidden.has(pf.key) ? null : (
-                  <div key={pf.key} className="flex items-center justify-between gap-3 leading-tight">
-                    <span className="flex items-center gap-1.5 text-slate-300">
+                  <div key={pf.key} className="flex items-center justify-between gap-3 leading-relaxed">
+                    <span className="flex items-center gap-1.5 text-cream">
                       <span className="inline-block h-2 w-2 rounded-sm" style={{ background: pf.color }} />
                       {pf.label}
                     </span>
-                    <span className="tabular-nums text-slate-100">
-                      {pf.fmt(hoverFrame[pf.key])}{pf.unit ? ` ${pf.unit}` : ''}
+                    <span className="font-mono tabular-nums text-muted-foreground">
+                      {fmtValue(pf, hoverFrame[pf.key])}
                     </span>
                   </div>
                 )
@@ -203,20 +193,11 @@ export default function AnalysisPanel({ features, duration, playheadSec, onSeek 
             </div>
           )}
         </div>
-
-        {/* Time axis */}
-        <div className="absolute left-8 right-0 bottom-0 h-4 text-[9px] text-slate-400">
-          {tTicks.map((tt, i) => (
-            <span key={i} className="absolute top-0 tabular-nums"
-              style={{
-                left: `${tt.pos * 100}%`,
-                transform: i === 0 ? 'none' : i === tTicks.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
-              }}>
-              {fmtTime(tt.t)}
-            </span>
-          ))}
-        </div>
       </div>
+
+      <p className="mt-4 font-mono text-[13px] text-muted-foreground">
+        Values at the playhead · click a name to hide its line · hover the chart for any moment
+      </p>
     </div>
   )
 }

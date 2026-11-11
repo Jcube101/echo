@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import React from 'react'
 import { describe, expect, it } from 'vitest'
-import Spectrogram from '../components/Spectrogram.jsx'
+import Spectrogram, { visibleFreqTicks } from '../components/Spectrogram.jsx'
 
 // FE-011 — Spectrogram DOM (canvas 2D is stubbed in vitest.setup.js; pixel
 // output is verified by E2E-006 in a real browser, not here).
@@ -36,7 +36,7 @@ describe('Spectrogram', () => {
   it('positions the playhead line at progress * 100%', () => {
     const spectrogram = { bins: 2, cols: 2, data: [0, 0, 0, 0], freq_ticks: [] }
     const { container } = render(<Spectrogram spectrogram={spectrogram} progress={0.42} duration={10} />)
-    const playhead = container.querySelector('.bg-white\\/90')
+    const playhead = container.querySelector('[data-testid="spectrogram-playhead"]')
     expect(playhead).toHaveStyle({ left: '42%' })
   })
 
@@ -45,5 +45,18 @@ describe('Spectrogram', () => {
     render(<Spectrogram spectrogram={spectrogram} progress={0} duration={120} />)
     expect(screen.getByText('0:00')).toBeInTheDocument()
     expect(screen.getByText('2:00')).toBeInTheDocument()
+  })
+
+  it('drops Hz ticks closer than ~14px to a neighbour, keeping the upper one', () => {
+    // The real backend ticks on the 96px strip: 250 sits 7px under 500.
+    const ticks = [
+      { hz: 250, pos: 0.0751, label: '250' },
+      { hz: 500, pos: 0.1503, label: '500' },
+      { hz: 1000, pos: 0.3005, label: '1k' },
+      { hz: 2000, pos: 0.5025, label: '2k' },
+      { hz: 4000, pos: 0.7045, label: '4k' },
+      { hz: 8000, pos: 0.9065, label: '8k' },
+    ]
+    expect(visibleFreqTicks(ticks).map((t) => t.label)).toEqual(['8k', '4k', '2k', '1k', '500'])
   })
 })

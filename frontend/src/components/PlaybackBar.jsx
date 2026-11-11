@@ -1,19 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Pause, Play } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import Spectrogram from './Spectrogram.jsx'
+import { fmtClock } from '../lib/format.js'
 
-function fmt(s) {
-  if (!isFinite(s)) return '0:00'
-  const m = Math.floor(s / 60)
-  const sec = Math.floor(s % 60)
-  return `${m}:${sec.toString().padStart(2, '0')}`
-}
-
-// Playback transport + spectrogram strip. Owns the <audio> element and reports
-// the current playhead time up via onSeek(seconds), which App turns into the
-// highlighted 3D point. Scrubbing works with or without live audio playback,
-// so the sync is verifiable headlessly.
+// The dock: playback transport + spectrogram strip. Owns the <audio> element
+// and reports the current playhead time up via onSeek(seconds), which App turns
+// into the highlighted 3D point. Scrubbing works with or without live audio
+// playback, so the sync is verifiable headlessly.
 export default function PlaybackBar({ audioUrl, duration, spectrogram, playheadSec, onSeek }) {
   const audioRef = useRef(null)
   const [playing, setPlaying] = useState(false)
@@ -50,22 +43,28 @@ export default function PlaybackBar({ audioUrl, duration, spectrogram, playheadS
   const disabled = !audioUrl
 
   return (
-    <div className="border-t border-white/10 bg-panel/60 px-4 py-2">
-      <div className="flex items-center gap-3">
-        <Button
+    <div className="border-t border-night-line bg-night-2 px-4 sm:px-6 pt-3.5 pb-3">
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
           onClick={togglePlay}
           disabled={disabled}
-          size="icon"
-          className={'h-9 w-9 shrink-0 rounded-full ' +
-            (disabled ? 'bg-white/5 text-slate-600' : 'bg-white/15 hover:bg-white/25 text-white')}
           title={playing ? 'Pause' : 'Play'}
+          aria-label={playing ? 'Pause' : 'Play'}
+          className={'grid h-11 w-11 shrink-0 place-items-center rounded-full transition-colors ' +
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-night-2 ' +
+            (disabled ? 'bg-night-3 text-muted-foreground' : 'bg-cream text-ink hover:bg-white')}
         >
-          {playing ? <Pause className="fill-current" /> : <Play className="fill-current ml-0.5" />}
-        </Button>
+          {playing
+            ? <Pause className="h-4 w-4 fill-current" />
+            : <Play className="h-4 w-4 fill-current ml-0.5" />}
+        </button>
 
-        <span className="text-[11px] tabular-nums text-slate-400 w-10 text-right">
-          {fmt(playheadSec)}
-        </span>
+        <div className="shrink-0 font-mono text-sm tabular-nums">
+          <span className="text-cream">{fmtClock(playheadSec)}</span>
+          <span className="text-muted-foreground"> / </span>
+          <span className="text-muted-foreground">{fmtClock(dur)}</span>
+        </div>
 
         <input
           type="range"
@@ -76,16 +75,15 @@ export default function PlaybackBar({ audioUrl, duration, spectrogram, playheadS
           onChange={onScrub}
           disabled={disabled}
           aria-label="Seek"
-          className="flex-1 accent-indigo-400 disabled:opacity-40"
+          className="echo-range flex-1 min-w-0"
+          style={{ '--pct': `${Math.min(100, Math.max(0, progress * 100))}%` }}
         />
 
-        <span className="text-[11px] tabular-nums text-slate-400 w-10">
-          {fmt(dur)}
-        </span>
+        <span className="hidden sm:inline shrink-0 text-[13px] text-muted-foreground">Spectrogram</span>
       </div>
 
-      {/* Spectrogram strip below the transport (owns its own axes + panel) */}
-      <div className="mt-2">
+      {/* Spectrogram strip below the transport (owns its own axes) */}
+      <div className="mt-3">
         <Spectrogram spectrogram={spectrogram} progress={progress} duration={dur} />
       </div>
 

@@ -3,17 +3,23 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      // Design v2 tokens (DESIGN_V2.md §3). The landing page uses paper/ink,
+      // the app uses night/cream; amber = playhead + highlights, rust = record
+      // button + primary CTAs (white text only on rust or darker).
       colors: {
-        ink: '#0a0a12',
-        panel: '#12121c',
-        // shadcn/ui primitive colors — mapped in index.css's :root to Echo's
-        // EXISTING palette (ink/panel/indigo accent/rose destructive), not
-        // shadcn's own defaults. See index.css for the exact values + why.
-        // border/input/muted/accent are intentionally translucent (baked-in
-        // alpha) to match Echo's existing bg-white/10-style overlay
-        // convention, rather than opaque theme colors.
-        border: 'hsl(var(--border) / 0.1)',
-        input: 'hsl(var(--input) / 0.15)',
+        paper: { DEFAULT: '#F4EFE4', 2: '#EAE3D3', line: '#D9D0BD' },
+        ink: { DEFAULT: '#1F2A22', 2: '#45503F', 3: '#5C6655' },
+        night: { DEFAULT: '#121A15', 2: '#1A241D', 3: '#223027', line: '#2E3D33' },
+        cream: '#F4EFE4',
+        // `amber` keeps Tailwind's built-in amber-50…950 scale alongside it.
+        amber: { DEFAULT: '#E8B04B' },
+        rust: { DEFAULT: '#B5532A', link: '#9A4522' },
+        // shadcn/ui primitive colors — mapped in index.css's :root onto the
+        // tokens above, so Sheet/Select/Tabs/toast pick up the v2 look with no
+        // structural change. The brief's `muted` text colour (#A9B0A0) is
+        // `text-muted-foreground`; `bg-muted` stays shadcn's quiet surface.
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
@@ -22,7 +28,7 @@ export default {
           foreground: 'hsl(var(--primary-foreground))',
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary) / 0.1)',
+          DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))',
         },
         destructive: {
@@ -30,11 +36,11 @@ export default {
           foreground: 'hsl(var(--destructive-foreground))',
         },
         muted: {
-          DEFAULT: 'hsl(var(--muted) / 0.08)',
+          DEFAULT: 'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))',
         },
         accent: {
-          DEFAULT: 'hsl(var(--accent) / 0.1)',
+          DEFAULT: 'hsl(var(--accent))',
           foreground: 'hsl(var(--accent-foreground))',
         },
         popover: {
@@ -45,6 +51,11 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+      },
+      fontFamily: {
+        display: ['"Fraunces Variable"', 'Fraunces', 'Georgia', 'serif'],
+        sans: ['"Instrument Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       borderRadius: {
         lg: 'var(--radius)',

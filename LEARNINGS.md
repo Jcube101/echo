@@ -511,6 +511,46 @@ installed in the venv). The maskable/apple versions use a square background
 with the mark scaled to 72% for the safe zone. Replace all five when the real
 wordmark mark is built.
 
+### Additive blending erases a colour ramp (Design v2 S2)
+The teal trail used `THREE.AdditiveBlending`: overlapping sprites sum toward
+white, which was the point when brightness was the only signal. With D4's
+green → amber → cream loudness ramp, any dense loud passage summed to a white
+blob and the ramp was unreadable. The points now use normal premultiplied
+blending (`CustomBlending`, `OneFactor` / `OneMinusSrcAlphaFactor` — the
+fragment shader already outputs premultiplied colour), plus `renderOrder={1}`
+so they draw over the connecting line. Don't switch back to additive without
+re-checking a loud sample (Lion is a good one).
+
+### `npm run build` is the deploy for static files (Design v2 S2)
+FastAPI's StaticFiles reads `frontend/dist` from disk on every request, so a
+rebuild is live at `echo.job-joseph.com` immediately — before any
+`systemctl restart`. Only `main.py` changes need the restart. Don't run a
+half-finished build on the Pi expecting it to stay private; build when the
+work is ready to be seen (or build to another outDir).
+
+### Tailwind token clashes with shadcn and built-ins (Design v2 S2)
+- `amber: { DEFAULT: '#E8B04B' }` under `theme.extend.colors` adds `bg-amber`
+  while keeping Tailwind's `amber-50…950`; a bare string would replace the
+  whole scale.
+- The brief's `muted` (a text colour) can't be a top-level token: shadcn owns
+  `muted` as a surface (`bg-muted`). It is `text-muted-foreground`.
+- `ink` changed meaning (old app background → the brief's landing text
+  colour). Nothing in the app should use `bg-ink`; the app surface is `night`.
+
+### Render one layout, don't hide one (Design v2 S2)
+The sample credit lives in the sidebar on desktop and in a chip below it.
+Rendering both and hiding one with CSS leaves the same text twice in the DOM,
+which breaks Playwright's strict `getByText(/rec\./)` and is read twice by
+screen readers. `useMediaQuery` picks one to render.
+
+### Fonts: precache only what is used (Design v2 S2)
+`@fontsource/*` latin-only CSS (`latin-400.css`) keeps the build to the files
+actually needed; the variable Fraunces package has no per-subset CSS, so its
+latin-ext/vietnamese files are emitted but excluded from the service worker
+precache (`globPatterns` + `globIgnores` in `vite.config.js`). The 3D axis
+labels (drei `<Text>`) still fetch their default font from a CDN at runtime —
+an existing behaviour, and the one thing in the app shell that isn't offline.
+
 ---
 
 ## Manual follow-ups for Job

@@ -28,7 +28,7 @@ this Pi.
 | v1 — Core Product (M1–M9) | ✅ Shipped |
 | v1.x — Polish | 🚧 In progress (1 of 4 items started) |
 | v1.5 — Extended Spectral Analysis Panel | ✅ Shipped (2D panel; 3D cube deferred) |
-| v1.6 — Frontend Redesign (Design v2) | 🚧 In progress (S1 of 5 shipped) |
+| v1.6 — Frontend Redesign (Design v2) | 🚧 In progress (S1–S2 of 5 shipped) |
 | v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
 
@@ -219,9 +219,14 @@ Frontend only, plus one backend route; no extraction/schema/storage changes.
   phone: the PWA installs and opens at `/app`, and `/app?record=1` starts
   recording after the permission prompt. The home-screen icon is a
   placeholder (replace in S2/S4)
-- 📋 **Planned** — S2 Design tokens + desktop app reskin (header, clip sidebar,
-  dock + spectrogram, Spectral panel labels). Needs Job's call on trail and
-  spectrogram colours first (DESIGN_V2.md D4/D5)
+- ✅ **Shipped** — S2 Design tokens + desktop app reskin (header, clip sidebar,
+  dock + spectrogram, Spectral panel labels). **Live (2026-11-12):** v2
+  tokens + self-hosted fonts; new header; trail coloured by loudness (D4) and
+  the new spectrogram ramp (D5), both as Job decided; clip sidebar at ≥1200px;
+  Spectral panel as seven stacked lanes with a label column. Camera presets
+  (D6) left out at Job's call. Known gaps, all from "no API changes": history
+  clips can't show a filename or tell an upload from a browser recording.
+  Deviations from the mockups are listed in VERIFICATION_LOG.md Session 11
 - 📋 **Planned** — S3 Phone app: idle home, recording screen, result screen
 - 📋 **Planned** — S4 Landing page, desktop + phone, with a static hero SVG and
   FAQ (closed by default)
@@ -303,6 +308,9 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-11-12** — Shipped v1.6 S2 (tokens + desktop app reskin). Job decided
+  D4 (loudness-coloured trail) and D5 (new spectrogram ramp) in favour of the
+  design; D6 (camera presets) left out for now.
 - **2026-11-12** — Shipped v1.6 S1 (routing + PWA), live behind the tunnel:
   `/app` SPA route, placeholder landing at `/`, `/app?record=1`, PWA manifest
   (`start_url: /app`) + service worker. Android install and `?record=1`

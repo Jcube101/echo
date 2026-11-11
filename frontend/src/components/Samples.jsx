@@ -55,21 +55,21 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
     <Sheet open={open} onOpenChange={(next) => { if (!next) onClose() }}>
       <SheetContent
         side="left"
-        className="w-96 max-w-[90vw] p-0 flex flex-col gap-0 bg-panel border-border text-slate-100"
+        className="w-96 max-w-[90vw] p-0 flex flex-col gap-0 bg-night-2 border-border text-cream"
       >
         <SheetHeader className="px-4 py-3 border-b border-border space-y-1">
-          <SheetTitle className="text-sm font-semibold flex items-center gap-2 text-slate-100">
-            <span>🔊</span> Sample sounds
+          <SheetTitle className="font-display text-lg font-semibold text-cream">
+            Sample sounds
           </SheetTitle>
-          <SheetDescription className="text-[11px] text-slate-500">
+          <SheetDescription className="text-[11px] text-muted-foreground">
             Curated example sounds — no upload needed. Tap one to visualize it.
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto scroll-thin p-3 space-y-3">
-          {err && <div className="text-xs text-rose-400 px-1 py-2">{err}</div>}
+          {err && <div className="text-xs text-destructive px-1 py-2">{err}</div>}
           {!err && items.length === 0 && (
-            <div className="text-xs text-slate-500 px-1 py-4 text-center">No samples available.</div>
+            <div className="text-xs text-muted-foreground px-1 py-4 text-center">No samples available.</div>
           )}
           {items.map((s) => {
             const active = s.id === currentId
@@ -77,15 +77,15 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
               <Card
                 key={s.id}
                 className={
-                  'rounded-lg p-3 shadow-none ' +
-                  (active ? 'border-indigo-400/50 bg-indigo-500/15' : 'border-border bg-white/[0.03]')
+                  'rounded-2xl p-3.5 shadow-none ' +
+                  (active ? 'border-amber/60 bg-night-3' : 'border-border bg-night-3/50')
                 }
               >
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-slate-100">{s.species}</div>
+                    <div className="font-display text-base font-semibold text-cream">{s.species}</div>
                     {s.sci_name && (
-                      <div className="text-[11px] italic text-slate-500">{s.sci_name}</div>
+                      <div className="text-xs italic text-muted-foreground">{s.sci_name}</div>
                     )}
                   </div>
                   <Button
@@ -93,7 +93,7 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
                     disabled={loadingId === s.id}
                     title={`Visualize ${s.species}`}
                     size="sm"
-                    className="shrink-0 h-9 px-3 bg-primary hover:bg-primary/90 text-primary-foreground"
+                    className="shrink-0 h-9 rounded-full px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground"
                   >
                     {loadingId === s.id ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
                     <span>{s.duration_s?.toFixed(0)}s</span>
@@ -101,17 +101,17 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
                 </div>
 
                 {/* Attribution — required, always visible */}
-                <div className="mt-2 pt-2 border-t border-border text-[10.5px] leading-relaxed text-slate-500">
-                  <div>Recordist: <span className="text-slate-400">{s.recordist}</span></div>
+                <div className="mt-2 pt-2 border-t border-border text-xs leading-relaxed text-muted-foreground">
+                  <div>Recordist: <span className="text-muted-foreground">{s.recordist}</span></div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
                     <a href={s.license_url} target="_blank" rel="noopener noreferrer"
-                       className="text-slate-400 underline decoration-dotted hover:text-slate-200">
+                       className="text-muted-foreground underline decoration-dotted hover:text-cream">
                       {s.license}
                     </a>
-                    <span className="text-slate-600">·</span>
+                    <span className="text-muted-foreground">·</span>
                     <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                       className="text-indigo-300 hover:text-indigo-200">
-                      {sourceLabel(s)} ↗
+                       className="text-amber hover:underline">
+                      {sourceLabel(s)}
                     </a>
                   </div>
                 </div>
@@ -120,7 +120,7 @@ export default function Samples({ open, onClose, currentId, onLoaded, onStatus }
           })}
         </div>
 
-        <div className="px-4 py-2 border-t border-border text-[10px] text-slate-600">
+        <div className="px-4 py-2 border-t border-border text-[11px] text-muted-foreground">
           Recordings © their recordists, via xeno-canto.org and freesound.org.
           Reused under the Creative Commons licenses shown per clip.
         </div>

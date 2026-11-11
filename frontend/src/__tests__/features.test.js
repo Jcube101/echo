@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGeometry, WORLD } from '../lib/features.js'
+import { buildGeometry, loudnessColor, WORLD } from '../lib/features.js'
 
 // FE-004 — buildGeometry (features.js). LEARNINGS.md Part B: pitch/timbre/
 // motion are ALREADY world coordinates — plotted as-is, no per-clip
@@ -53,5 +53,17 @@ describe('buildGeometry', () => {
 
   it('exports WORLD matching the extraction.py half-extent (3.0)', () => {
     expect(WORLD).toBe(3.0)
+  })
+
+  it('colours by loudness: green when quiet, amber in the middle, cream when loud', () => {
+    const [qr, qg, qb] = loudnessColor(0)
+    expect(qg).toBeGreaterThan(qr) // green-dominant
+    expect(qg).toBeGreaterThan(qb)
+    const [mr, mg, mb] = loudnessColor(0.25) // sqrt ramp: 0.25 is the midpoint
+    expect(mr).toBeGreaterThan(mg) // amber: red > green > blue
+    expect(mg).toBeGreaterThan(mb)
+    const loud = loudnessColor(1)
+    expect(Math.min(...loud)).toBeGreaterThan(0.85) // pale cream
+    expect(loudnessColor(7)).toEqual(loud) // clamped
   })
 })
