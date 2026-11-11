@@ -1,7 +1,8 @@
 # Echo — Design v2 (frontend redesign brief)
 
 **Status:** 📋 Planned (see ROADMAP.md, "v1.6 — Frontend Redesign").
-**Design canvas:** https://claude.ai/artifact/LTDnZh1wrRMpBHxwdpmnaH (private to Job; ask him for screenshots if a session needs to see it).
+**Design canvas:** https://claude.ai/artifact/LTDnZh1wrRMpBHxwdpmnaH (private to Job — Claude Code can't open it).
+**Screenshots:** `docs/design-v2/` — **open the matching PNG before building each screen** and match it. Where a PNG and this text disagree, this text wins; flag the mismatch to Job.
 **Scope:** frontend only, plus one small backend route. No changes to extraction, the feature schema, storage, retention or any API response.
 
 This file is the source of truth for the redesign. Build it in the session order
@@ -120,6 +121,8 @@ superseded; ignore it.
 
 ### 4.1 Landing — desktop (`/`, 1440 wide)
 
+![Landing, desktop](docs/design-v2/01-landing-desktop.png)
+
 Top to bottom:
 
 1. **Nav** — wordmark (logo + "Echo"), links: How it works · Two views · Samples · FAQ,
@@ -160,12 +163,16 @@ illustrations. Re-run the script if samples are re-extracted by `migrate_schema.
 
 ### 4.2 Landing — phone (390 wide)
 
+![Landing, phone](docs/design-v2/02-landing-phone.png)
+
 Same sections, stacked: full-width buttons, the hero box below the copy, steps as
 a vertical list, the two views as stacked cards, samples as a list (thumbnail,
 name, duration, provider, play icon) with "All 14 samples →", the same FAQ
 (closed), the closing strip, footer.
 
 ### 4.3 App — desktop, 3D Trail (`/app`, 1440×900)
+
+![App, desktop, 3D Trail](docs/design-v2/03-app-desktop-trail.png)
 
 - **Header (72px):** wordmark (links to `/`) · segmented tabs **3D Trail /
   Spectral panel** · spacer · **Record** (rust) · **Upload** · **Pi mic** with a
@@ -177,7 +184,7 @@ name, duration, provider, play icon) with "All 14 samples →", the same FAQ
   (Quiet → Loud, four dots growing).
 - **Dock (≈196px, `night-2`):** play/pause (cream circle), time "0:04 / 0:14",
   amber progress bar, then the spectrogram strip with Hz ticks on the left
-  (250 … 8k from `freq_ticks`), amber playhead line, time ticks underneath.
+  (500 … 8k from `freq_ticks`; drop any tick closer than ~14px to its neighbour), amber playhead line, time ticks underneath.
 - **Sidebar (360px, `night-2`):**
   - *Clip card* — for a sample: "SAMPLE" eyebrow, name (Fraunces), scientific
     name, duration, recordist, licence, source link (this replaces today's
@@ -189,6 +196,8 @@ name, duration, provider, play icon) with "All 14 samples →", the same FAQ
 
 ### 4.4 App — desktop, Spectral panel
 
+![App, desktop, Spectral panel](docs/design-v2/04-app-desktop-spectral.png)
+
 Same header, dock and sidebar. The stage shows the seven lanes stacked. On the left
 is a 206px label column: colour square, name (a toggle button with `aria-pressed`),
 and the value at the playhead in mono. The amber playhead runs through all lanes
@@ -197,11 +206,15 @@ hover the chart for any moment".
 
 ### 4.5 Phone — app home (`/app`, idle)
 
+![App home, phone](docs/design-v2/05-app-phone-home.png)
+
 Wordmark + History button. A large rust **record** circle (168px) with soft rings,
 "Tap to record", "Up to 60 seconds". Below it, two buttons: **Upload** and **Pi mic · 10 s**.
 "Or try a sample" list (thumbnail, name, duration) with "All 14".
 
 ### 4.6 Phone — recording
+
+![Recording, phone](docs/design-v2/06-app-phone-recording.png)
 
 "LISTENING" eyebrow, "Point toward the sound", a 280px countdown ring (amber arc,
 "0:12 of 1:00 max"), live level bars, big rust **Stop and see its shape**, Cancel,
@@ -210,6 +223,8 @@ you stop." The ring and level bars use the existing `useRecorder` state;
 level comes from an `AnalyserNode` on the same stream.
 
 ### 4.7 Phone — result
+
+![Result, phone](docs/design-v2/07-app-phone-result.png)
 
 Back button, clip name and type. Tabs Trail / Spectral. Trail fills about 360px.
 Three readout chips (Pitch, Timbre, Motion at the playhead), the spectrogram strip
@@ -294,3 +309,12 @@ in the same change.
 **Not in scope:** any change to `extraction.py`, feature JSON, `FEATURE_SCHEMA_VERSION`,
 the DB schema, retention, upload limits or `/capture` behaviour. If a session finds
 it needs one, stop and ask Job.
+
+---
+
+## 8. Notes on the screenshots
+
+- They are mockups drawn from **real sample data** (Common Myna, Asian Koel, Lion, Wolf, Cricket), so trails, lanes and spectrograms look like the real thing.
+- The 3D trail in them is a flat SVG projection. Build it with the existing R3F scene, not as an image. Only the landing-page illustrations are static SVGs (§4.1).
+- History rows show placeholders (`[DATE · TIME]`, `[FILENAME]`). Fill them from `/history`.
+- The phone screens are 390×844, rendered at 2×.
