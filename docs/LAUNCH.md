@@ -9,7 +9,7 @@ the feature schema — no `FEATURE_SCHEMA_VERSION` bump, no `migrate_schema.py`.
 
 ---
 
-## Decisions (Job, 2026-11-12)
+## Decisions (Job, 2026-11-12) — all settled, don't re-ask
 
 | # | Decision |
 |---|---|
@@ -17,6 +17,8 @@ the feature schema — no `FEATURE_SCHEMA_VERSION` bump, no `migrate_schema.py`.
 | L2 | The Pi mic is **not** available to the public. Only Job can use it until the BYO Pi mic work replaces it. |
 | L3 | Samples stay public for everyone, unchanged. |
 | L4 | Protect the Pi: it also runs JARVIS and other services, so Echo must never be able to starve them. |
+| L5 | **Pi mic gate = Cloudflare Access (option a).** Home-network-only (option b) was considered and rejected: it doesn't work away from home and lets anyone on the Wi-Fi trigger the mic. |
+| L6 | **Retention changes** from a global 50 to: **20 per browser**, **500 clips or 1 GB site-wide** (whichever first), and **30-day inactivity** deletion. Job has approved updating the Locked Decision row in CLAUDE.md. |
 
 ---
 
@@ -55,7 +57,7 @@ the feature schema — no `FEATURE_SCHEMA_VERSION` bump, no `migrate_schema.py`.
   (`RETENTION_GLOBAL_*`). When it's hit, delete the oldest clips site-wide.
 - Inactivity: delete any owner's clips not opened for **30 days**. Run it at
   startup and once a day (a systemd timer, or a check on each upload).
-- Update CLAUDE.md's "History retention" row, with Job's OK, since it's a Locked Decision.
+- Update CLAUDE.md's "History retention" row to match (approved by Job, decision L6).
 
 **Existing clips:** add a one-off admin script `claim_clips.py <visitor_id>` that
 assigns every `owner_id IS NULL` clip to Job's browser ID. Job copies his ID from
@@ -71,20 +73,44 @@ the browser's cookie. Anything left unclaimed after launch is deleted.
 
 ---
 
-## 2. Pi mic: Job only
+## 2. Pi mic: Job only, via Cloudflare Access (decision L5)
 
-- Hide the **Pi mic** button unless `GET /api/me` says `{"pi_mic": true}`.
-- `POST /capture` returns **404** unless the request is allowed. Allowed means either:
-  - **(a, recommended)** a **Cloudflare Access** policy on `echo.job-joseph.com/capture`
-    that only lets in Job's email. Echo then checks the `Cf-Access-Jwt-Assertion`
-    header is present and valid (verify against the team's public certs), **or**
-  - **(b)** the request comes from the home LAN (`CF-Connecting-IP` is absent and the
-    client IP is in `192.168.0.0/16`), for use on home Wi-Fi only.
-- Ask Job which option before building. (a) needs a one-time Cloudflare Zero Trust
-  setup in the dashboard, which Job does by hand.
-- The BYO Pi mic work will later replace `/capture` entirely.
+**What Job sets up by hand** (Cloudflare Zero Trust dashboard, free plan, one time):
 
----
+1. Zero Trust → Access → Applications → add a **self-hosted** application on
+   `echo.job-joseph.com` covering the paths **`/me`**, **`/capture`** and
+   **`/api/schema-audit`**.
+2. Policy: **Allow**, include **Emails** = Job's email only. Login method: one-time PIN.
+3. Session duration: **1 month**.
+4. Copy the application's **AUD tag** and the team domain
+   (`<team>.cloudflareaccess.com`) into Echo's environment (`ECHO_CF_ACCESS_AUD`,
+   `ECHO_CF_TEAM_DOMAIN`) — put them in the systemd unit, never in git.
+
+Claude Code writes these steps into the end-of-session checklist and does not
+attempt them.
+
+**What Echo does**
+
+- **Verify the token itself.** Any request to a gated route must carry a valid
+  `Cf-Access-Jwt-Assertion` header: signature checked against
+  `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` (cache the keys),
+  `aud` = `ECHO_CF_ACCESS_AUD`, not expired. Otherwise **404**. This matters
+  because anything on the home Wi-Fi can reach port 8014 directly and skip
+  Cloudflare. No valid JWT means no mic, from anywhere.
+- If `ECHO_CF_ACCESS_AUD` isn't set, gated routes are **always 404** (fail closed).
+- **`GET /me`** (gated): the sign-in step. Cloudflare asks for Job's email the first
+  time. Echo then redirects to `/app?owner=1`. After that, the Access cookie lets
+  `/capture` calls from the app through for a month.
+- **`GET /api/me`** (public): `{"pi_mic": true}` only when the request carries a
+  valid Access JWT, else `{"pi_mic": false}`. The app shows the **Pi mic** button only
+  when it's true.
+- When the session expires, `/capture` 404s → the app hides the button and shows
+  "Sign in again at /me" in a toast (only to someone who had it before).
+- Add `PyJWT[crypto]` to `requirements.txt` if needed (pin per CLAUDE.md conventions).
+- Tests: forged / expired / wrong-audience tokens → 404. No env set → 404. Valid
+  token (signed with a test key in the fixture) → passes the gate.
+- The BYO Pi mic work will later replace `/capture`; `/me` and the gate stay for
+  owner-only pages.
 
 ## 3. Protect the Pi
 
@@ -126,7 +152,7 @@ the browser's cookie. Anything left unclaimed after launch is deleted.
 
 - Turn off FastAPI's `/docs`, `/redoc` and `/openapi.json` in production
   (`docs_url=None, redoc_url=None, openapi_url=None` unless `ECHO_DEV=1`).
-- `/api/schema-audit`: same gate as `/capture` (Job only).
+- `/api/schema-audit`: behind the same Access gate (Job only).
 - `/api/health`: keep public, but return only `{"ok": true}`.
 - Security headers on every response: `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: same-origin`, `Permissions-Policy: microphone=(self)`,
@@ -148,8 +174,8 @@ the browser's cookie. Anything left unclaimed after launch is deleted.
   `/audio/{file}` from the wrong context → 404.
 - Delete works, and the files are gone from disk.
 - Per-browser, global and 30-day retention are covered by pytest.
-- From outside the home network, the Pi mic button is hidden and `POST /capture` → 404.
-  From Job's allowed path it still records.
+- Without a valid Access JWT (any network, including direct LAN to :8014), the Pi mic
+  button is hidden and `POST /capture` → 404. After signing in at `/me`, it records.
 - Firing 5 uploads at once gives 1–2 processed and the rest a friendly 503, with
   JARVIS still responsive. Hitting the rate limit gives a 429.
 - `/docs` → 404 in production. Security headers are present.
