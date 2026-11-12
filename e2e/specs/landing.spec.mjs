@@ -50,7 +50,7 @@ test('FAQ: seven questions, all closed by default, open on click', async ({ page
 
 test('"See its shape" opens the app with that sample loaded', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('link', { name: 'See the shape of Lion' }).click()
+  await page.getByRole('link', { name: /See its shape.*Lion/ }).click()
   await expect(page).toHaveURL(/\/app$/) // the ?sample= param is dropped once read
   const sidebar = page.getByRole('complementary', { name: 'Clip details' })
   await expect(sidebar.getByRole('heading', { name: 'Lion' })).toBeVisible({ timeout: 20_000 })
@@ -80,7 +80,7 @@ test('phone layout: stacked sections, sample rows link into the app', async ({ p
   await expect(page.getByRole('heading', { name: 'Start with a sample' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 
-  await page.getByRole('link', { name: 'See the shape of Wolf' }).click()
+  await page.getByRole('link', { name: /See its shape.*Wolf/ }).click()
   await expect(page.getByRole('heading', { name: 'Wolf' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('button', { name: 'Back to home' })).toBeVisible()
 })

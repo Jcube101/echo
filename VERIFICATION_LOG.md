@@ -1533,6 +1533,28 @@ links inside the sample cards (16–21px tall), which are in-text links.
 This covers the checks Lighthouse most often fails on, but it is not a
 Lighthouse score.
 
+### Lighthouse — run later the same day
+
+Job asked for Lighthouse to be added as a dev dependency. It is now in the
+root `package.json` (verification tooling, v13.6) with `npm run lighthouse`
+(`e2e/lighthouse-a11y.mjs`), which uses Playwright's Chromium, audits mobile
+and desktop, and exits non-zero under 95.
+
+| Target | Mobile | Desktop |
+|---|---|---|
+| `http://127.0.0.1:8014/` | **100** (24 audits passed, 0 failed) | **100** (24 passed, 0 failed) |
+| `https://echo.job-joseph.com/` | **100** (24 passed, 0 failed) | **100** (24 passed, 0 failed) |
+
+The first run also scored 100 but listed one unscored failure,
+`label-content-name-mismatch`: the sample links had an `aria-label` ("See
+the shape of Lion") that did not contain their visible text ("See its
+shape"). Fixed by dropping the `aria-label` and appending the sample name as
+screen-reader-only text, so the name is now "See its shape: Lion". Suites
+after the fix: pytest 103 passed, Vitest 56 passed, Playwright 29 passed + the
+known E2E-010 failure.
+
+With this the "Lighthouse accessibility ≥ 95" item is met.
+
 ## Visual check against the mockups
 
 Full-page screenshots from the public URL in `verification/design_v2_s4/`

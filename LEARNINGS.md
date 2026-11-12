@@ -615,6 +615,16 @@ freshly downloaded code). Don't plan a "done when" around a tool that isn't
 already in `node_modules`; either add it as a devDependency with Job's OK or
 have Job run it.
 
+### Running Lighthouse on the Pi (Design v2 S4)
+`npm run lighthouse` (root `package.json`) audits the landing page's
+accessibility on mobile and desktop using Playwright's Chromium
+(`CHROME_PATH=chromium.executablePath()`), so no system Chrome is needed.
+Default target is the live local service; set `ECHO_LH_URL` for another.
+Two things it taught: an `aria-label` must CONTAIN the element's visible text
+(`label-content-name-mismatch` — append detail as `sr-only` text instead of
+replacing the label), and Playwright's `getByRole(..., { name: 'a: b' })`
+string match can miss a name assembled from adjacent text nodes — use a regex.
+
 ---
 
 ## Manual follow-ups for Job
@@ -631,9 +641,7 @@ have Job run it.
 - ~~**Phone app (Design v2 S3, 2026-11-12):** record end to end on the
   Android phone, and check Cancel discards.~~ **Done — Job confirmed both,
   2026-11-12.**
-- **Lighthouse on the landing page (Design v2 S4, 2026-11-12):** the brief's
-  "accessibility ≥ 95" was not measured. In desktop Chrome open
-  `echo.job-joseph.com`, DevTools → Lighthouse → Accessibility only →
-  Analyze (try both Mobile and Desktop). Record the scores in
-  VERIFICATION_LOG.md Session 13, or tell a Claude Code session to add
-  Lighthouse as a devDependency so it can be run on the Pi.
+- ~~**Lighthouse on the landing page (Design v2 S4, 2026-11-12):** the
+  "accessibility ≥ 95" score was not measured.~~ **Done 2026-11-12 —
+  Lighthouse added as a dev dependency; `npm run lighthouse` scores 100 on
+  mobile and desktop.**

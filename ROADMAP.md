@@ -240,9 +240,9 @@ Frontend only, plus one backend route; no extraction/schema/storage changes.
   `build_landing_art.py` (no API calls on `/`); deep links `/app?sample=<id>`
   and `/app?samples=1`; the app split into its own chunk so `/` weighs 142 KB
   as served (without fonts); thumbnails on the phone home list. Bird language
-  removed from the copy at Job's call. **One "done when" item open:** the
-  Lighthouse accessibility score — Lighthouse could not be run in the session
-  (see VERIFICATION_LOG.md Session 13); hand checks found no failures
+  removed from the copy at Job's call. Lighthouse accessibility: **100** on mobile
+  and desktop (`npm run lighthouse`, added as a dev dependency at Job's
+  request), so every "done when" item is met
 - 📋 **Planned** — S5 Update Vitest/Playwright tests for the new UI; docs
 
 ---
@@ -323,7 +323,8 @@ proves flaky in practice.
 
 - **2026-11-12** — Shipped v1.6 S4 (landing page). Decided (Job): no bird
   language in the landing copy — hero sub-lines and one FAQ question reworded,
-  DESIGN_V2.md §5 updated. Lighthouse score still to be run by hand.
+  DESIGN_V2.md §5 updated. Lighthouse added as a dev dependency
+  (`npm run lighthouse`): accessibility 100 on mobile and desktop.
 - **2026-11-12** — Shipped v1.6 S3 (phone app: home, recording, result).
   Recording end to end and Cancel confirmed by Job on his Android phone.
 - **2026-11-12** — Shipped v1.6 S2 (tokens + desktop app reskin). Job decided

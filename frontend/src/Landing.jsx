@@ -237,11 +237,13 @@ function SampleCard({ s }) {
       </div>
       <a
         href={sampleHref(s.id)}
-        aria-label={`See the shape of ${s.species}`}
         className={'mt-4 inline-flex h-11 items-center gap-2 self-start rounded-full border border-night-line px-4 text-sm font-semibold text-cream hover:bg-night-2 focus-visible:ring-amber focus-visible:ring-offset-night-3 ' + FOCUS}
       >
         <Play className="h-3 w-3 fill-current" aria-hidden />
-        See its shape
+        {/* The accessible name must contain the visible words (Lighthouse:
+            label-content-name-mismatch), so the sample name is appended
+            for screen readers rather than replacing the label. */}
+        See its shape<span className="sr-only">: {s.species}</span>
       </a>
     </li>
   )
@@ -252,11 +254,11 @@ function SampleRow({ s }) {
     <li>
       <a
         href={sampleHref(s.id)}
-        aria-label={`See the shape of ${s.species}`}
         className={'flex items-center gap-4 rounded-[16px] bg-night-3 p-3 focus-visible:ring-amber focus-visible:ring-offset-night-2 ' + FOCUS}
       >
         <Thumb id={s.id} className="h-12 w-[92px] shrink-0 rounded-lg" />
         <span className="min-w-0 flex-1">
+          <span className="sr-only">See its shape: </span>
           <span className="block font-display text-lg font-semibold text-cream">{s.species}</span>
           <span className="block text-sm text-[#A9B0A0]">{Math.round(s.duration_s)} s · {providerName(s)}</span>
         </span>
