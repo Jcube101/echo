@@ -1,0 +1,156 @@
+[
+ {
+  "id": "asian-koel",
+  "species": "Asian Koel",
+  "sci_name": "Eudynamys scolopaceus",
+  "recordist": "Albert Noorlander",
+  "license": "CC BY-NC-SA 4.0",
+  "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+  "source_url": "https://xeno-canto.org/1136884",
+  "provider": "xeno-canto",
+  "duration_s": 20.56
+ },
+ {
+  "id": "common-myna",
+  "species": "Common Myna",
+  "sci_name": "Acridotheres tristis",
+  "recordist": "David Darrell-Lambert",
+  "license": "CC BY-NC-SA 4.0",
+  "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+  "source_url": "https://xeno-canto.org/1151970",
+  "provider": "xeno-canto",
+  "duration_s": 14.495
+ },
+ {
+  "id": "rose-ringed-parakeet",
+  "species": "Rose-ringed Parakeet",
+  "sci_name": "Psittacula krameri",
+  "recordist": "Arjun Dutta",
+  "license": "CC BY-NC-SA 4.0",
+  "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+  "source_url": "https://xeno-canto.org/1153127",
+  "provider": "xeno-canto",
+  "duration_s": 15.766
+ },
+ {
+  "id": "lion-roar",
+  "species": "Lion",
+  "sci_name": "Panthera leo",
+  "recordist": "craigsmith",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/craigsmith/sounds/675442/",
+  "provider": "freesound",
+  "duration_s": 13.204
+ },
+ {
+  "id": "wolf-howl",
+  "species": "Wolf",
+  "sci_name": "Canis lupus",
+  "recordist": "craigsmith",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/craigsmith/sounds/675445/",
+  "provider": "freesound",
+  "duration_s": 23.168
+ },
+ {
+  "id": "cow-moo",
+  "species": "Cow",
+  "sci_name": "Bos taurus",
+  "recordist": "spurioustransients",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/spurioustransients/sounds/513563/",
+  "provider": "freesound",
+  "duration_s": 13.896
+ },
+ {
+  "id": "dog-bark",
+  "species": "Dog",
+  "sci_name": "Canis lupus familiaris",
+  "recordist": "Vrymaa",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/Vrymaa/sounds/737885/",
+  "provider": "freesound",
+  "duration_s": 5.481
+ },
+ {
+  "id": "cat-meow",
+  "species": "Cat",
+  "sci_name": "Felis catus",
+  "recordist": "Vrymaa",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/Vrymaa/sounds/756236/",
+  "provider": "freesound",
+  "duration_s": 10.986
+ },
+ {
+  "id": "frog-croak",
+  "species": "Frog",
+  "sci_name": null,
+  "recordist": "craigsmith",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/craigsmith/sounds/479833/",
+  "provider": "freesound",
+  "duration_s": 14.074
+ },
+ {
+  "id": "cricket-chirp",
+  "species": "Cricket",
+  "sci_name": null,
+  "recordist": "zimbot",
+  "license": "CC BY 4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "source_url": "https://freesound.org/people/zimbot/sounds/89354/",
+  "provider": "freesound",
+  "duration_s": 5.022
+ },
+ {
+  "id": "pig-grunt",
+  "species": "Pig",
+  "sci_name": "Sus scrofa domesticus",
+  "recordist": "JarredGibb",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/JarredGibb/sounds/233173/",
+  "provider": "freesound",
+  "duration_s": 2.478
+ },
+ {
+  "id": "deer-roar",
+  "species": "Red Deer",
+  "sci_name": "Cervus elaphus",
+  "recordist": "Joan Barnett",
+  "license": "Sampling+ 1.0",
+  "license_url": "https://creativecommons.org/licenses/sampling+/1.0/",
+  "source_url": "https://freesound.org/people/Joan%20Barnett/sounds/51060/",
+  "provider": "freesound",
+  "duration_s": 9.567
+ },
+ {
+  "id": "bullfrog-croak",
+  "species": "Bullfrog",
+  "sci_name": "Lithobates catesbeianus",
+  "recordist": "TheKingOfGeeks360",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/TheKingOfGeeks360/sounds/799266/",
+  "provider": "freesound",
+  "duration_s": 17.992
+ },
+ {
+  "id": "camel-grunt",
+  "species": "Camel",
+  "sci_name": null,
+  "recordist": "craigsmith",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_url": "https://freesound.org/people/craigsmith/sounds/437937/",
+  "provider": "freesound",
+  "duration_s": 23.407
+ }
+]

@@ -4,7 +4,7 @@ Operational guide for Claude Code sessions in this repo. These rules are
 binding in every session, not just the initial build.
 
 **Living document** — jointly maintained by Job and Claude Code sessions.
-Last updated: 2026-07-18.
+Last updated: 2026-11-12.
 
 ---
 
@@ -150,6 +150,10 @@ clamped — **requires, in the same change:**
 2. Run `python migrate_schema.py` (re-extracts + re-stamps history **and**
    samples; this is the only supported migration path — not an ad-hoc script).
 3. Confirm `python schema_audit.py` reports **zero stale** clips.
+4. Run `python build_landing_art.py` and commit what it changes — the landing
+   page's static illustrations and sample thumbnails are drawn from the sample
+   feature files (`tests/test_landing_art.py` fails while they are stale). The
+   same applies whenever a sample is added, removed or re-credited.
 
 This is enforced, not just documented: `tests/test_schema.py` (SCHEMA-005) fails
 whenever any stored clip is behind `FEATURE_SCHEMA_VERSION`, and

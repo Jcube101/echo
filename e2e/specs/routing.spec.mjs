@@ -4,11 +4,11 @@ import { trackConsoleErrors } from '../helpers.mjs'
 // E2E-ROUTE-* — Design v2 session 1: landing at /, app at /app
 // (DESIGN_V2.md §2), ?record=1 auto-start, and the PWA manifest.
 
-test('/ shows the placeholder landing and links into the app', async ({ page }) => {
+test('/ shows the landing page and links into the app', async ({ page }) => {
   const errors = trackConsoleErrors(page)
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Echo' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Every sound has a shape.' })).toBeVisible()
   await expect(page.locator('canvas')).toHaveCount(0)
 
   await page.getByRole('link', { name: 'Open Echo' }).click()

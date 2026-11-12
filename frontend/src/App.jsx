@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import Scene from './components/Scene.jsx'
 import AnalysisPanel from './components/AnalysisPanel.jsx'
@@ -19,7 +19,7 @@ import { uploadAudio, getClip, getSample, friendlyError } from './lib/api.js'
 import { useClipActions } from './lib/useClipActions.js'
 import { useMediaQuery } from './lib/useMediaQuery.js'
 import { indexForTime } from './lib/nearestIndex.js'
-import { wantsAutoRecord } from './lib/route.js'
+import { appIntent } from './lib/route.js'
 import sample from './data/sample.json'
 
 export default function App() {
@@ -42,10 +42,13 @@ export default function App() {
   // /app?record=1 (the landing page's "Record a sound" link): start the
   // browser recorder straight away. Read once, then drop the param from the
   // URL so a refresh or a shared link doesn't start recording again.
-  const [autoRecord] = useState(() => wantsAutoRecord(window.location.search))
+  // Links from the landing page can also ask for a sample (?sample=<id>) or
+  // the Samples sheet (?samples=1) — see lib/route.js.
+  const [intent] = useState(() => appIntent(window.location.search))
+  const autoRecord = intent.record
   useEffect(() => {
-    if (autoRecord) window.history.replaceState(null, '', window.location.pathname)
-  }, [autoRecord])
+    if (window.location.search) window.history.replaceState(null, '', window.location.pathname)
+  }, [])
 
   const busy = status === 'processing'
 
@@ -128,6 +131,16 @@ export default function App() {
       setLoadingSampleId(null)
     }
   }, [applyClip, onStatus])
+
+  // Act on the landing page's deep link once (the ref guards StrictMode's
+  // dev double-run).
+  const intentDone = useRef(false)
+  useEffect(() => {
+    if (intentDone.current) return
+    intentDone.current = true
+    if (intent.sample) loadSample(intent.sample)
+    else if (intent.samples) setSamplesOpen(true)
+  }, [intent, loadSample])
 
   // Upload, browser recording and Pi capture — one owner for every layout.
   const actions = useClipActions({ onStatus, onResult, autoRecord })

@@ -10,3 +10,17 @@ export function isAppPath(pathname) {
 export function wantsAutoRecord(search) {
   return new URLSearchParams(search).get('record') === '1'
 }
+
+// What a link into the app asks for (all optional, read once on load):
+//   ?record=1      start the browser recorder straight away
+//   ?sample=<id>   open with that sample loaded ("See its shape")
+//   ?samples=1     open the Samples sheet ("Open the sample library")
+export function appIntent(search) {
+  const q = new URLSearchParams(search)
+  const sample = q.get('sample')
+  return {
+    record: q.get('record') === '1',
+    sample: sample && /^[a-z0-9-]{1,64}$/.test(sample) ? sample : null,
+    samples: q.get('samples') === '1',
+  }
+}

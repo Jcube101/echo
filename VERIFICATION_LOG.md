@@ -1436,3 +1436,125 @@ Live after `sudo -n systemctl restart echo` (`is-active` → active): `/`,
 - Record again → Cancel → back on the home screen, nothing new in History.
 
 With that, the brief's "done when" for S3 is met.
+
+---
+
+# Session 13 — Design v2 S4: landing page (2026-11-12)
+
+Scope: DESIGN_V2.md §7 item 4. Frontend plus one repo-root script; no
+backend, API, extraction or schema change.
+
+## What was built
+
+- **`build_landing_art.py`** (repo root, standard library only, deterministic)
+  writes to `frontend/src/assets/landing/`: `hero-trails.svg` (47 KB),
+  `view-trail.svg` (26 KB), `view-spectral.svg` (21 KB), 14 spectrogram
+  thumbnails (168×48 PNG, 8–13 KB each, D5 ramp) and `samples.json`.
+  Lane colours and ranges are read from `lib/panelFeatures.js`.
+- **Landing page** (`Landing.jsx`): nav, hero, how it works, two views,
+  samples (four cards + ten chips; a compact list on phones), FAQ (seven
+  `<details>`, all closed), closing strip, footer. No API calls.
+- **Deep links:** `/app?sample=<id>` loads that sample; `/app?samples=1` opens
+  the Samples sheet; both params are dropped from the URL once read.
+- **Code split:** the app is its own chunk (1263 KB), loaded only on `/app`.
+- **Phone home:** sample thumbnails added (deferred from S3).
+- **Viewport:** `maximum-scale=1.0` removed from `index.html` so the page can
+  be pinch-zoomed (an accessibility requirement; applies to the app too).
+
+## Copy change (Job, 2026-11-12)
+
+"Don't use bird language." Hero sub-lines now start "Record a sound in the
+park…"; FAQ question 2 is "Does it tell me what made the sound?" (answer
+unchanged). DESIGN_V2.md §5 updated to match. An e2e test asserts no
+bird / species / identif- wording outside the samples section.
+
+## Automated suites
+
+| Suite | Result |
+|---|---|
+| `pytest` (default run) | **103 passed**, 6 deselected. 4 new: ART-001..004 (art matches the library, byte-for-byte for the SVGs) |
+| Vitest | **56 passed** (2 new: `appIntent`) |
+| Playwright | **29 passed, 1 failed** — E2E-010 again (no audio session on the Pi), unchanged |
+| `npm run build` | OK; precache 17 entries (1658 KiB) |
+
+New `e2e/specs/landing.spec.mjs` (7 tests): static page with no API or app
+chunk requests; no bird language; FAQ closed by default and toggles; "See its
+shape" loads the sample; a chip and the library link work; an unknown
+`?sample=` shows an error and leaves the app usable; phone layout without
+horizontal scroll. `routing.spec.mjs`'s placeholder test now checks the real
+landing heading.
+
+## Regression found and fixed during the session
+
+Loading the app with `React.lazy` + `<Suspense>` made `app-boot` and
+`mobile-regression` fail in full runs: the whole app was swapped for the
+fallback each time the 3D scene mounted. Cause and fix in LEARNINGS.md
+("No Suspense boundary above the R3F Canvas"). After the fix both pass.
+
+## Page weight (landing page, whole page scrolled, fonts excluded)
+
+| Where | Weight | Fonts |
+|---|---|---|
+| `https://echo.job-joseph.com/` desktop | **142 KB**, 15 requests | 103 KB |
+| `https://echo.job-joseph.com/` phone | **140 KB**, 14 requests | 86 KB |
+| Origin `127.0.0.1:8014` (no compression) | 350 KB | 102 KB |
+
+The < 300 KB target is met as the page is actually served: Cloudflare
+compresses JS/CSS. uvicorn itself sends them uncompressed (350 KB), which
+only matters for LAN access that bypasses the tunnel. 10 KB of the public
+figure is Cloudflare's own analytics beacon. Largest item: the landing JS
+(79 KB compressed), which includes React and the three inlined SVGs.
+
+## Accessibility
+
+**Lighthouse was not run.** Fetching and running it (`npx lighthouse`) was
+blocked by the session's permission check, and neither Lighthouse nor
+axe-core is installed in the repo. The "Lighthouse accessibility ≥ 95" item
+is therefore unverified.
+
+In its place, a hand-written Playwright audit at 1440 and 390 wide, against
+the public URL, with every FAQ item opened:
+
+| Check | Result |
+|---|---|
+| Text contrast (111 text nodes desktop, 73 phone; 4.5:1, or 3:1 large) | 0 failures |
+| Links/buttons without an accessible name | 0 |
+| One `<h1>`; heading levels never skip | pass |
+| Images without `alt`; `role="img"` without a label | 0 |
+| `header` / one `main` / `footer`; unlabelled `nav` | pass / 0 |
+| Duplicate ids; broken in-page anchors | 0 / 0 |
+| `lang`, `<title>`, zoomable viewport | pass |
+| Touch targets under 44px on phone | 0 |
+| First Tab stop | "Skip to content" |
+
+On desktop the only targets under 44px are the inline licence and source
+links inside the sample cards (16–21px tall), which are in-text links.
+
+This covers the checks Lighthouse most often fails on, but it is not a
+Lighthouse score.
+
+## Visual check against the mockups
+
+Full-page screenshots from the public URL in `verification/design_v2_s4/`
+(gitignored, on the Pi): `desktop-full.png` (1440 wide), `phone-full.png`
+(390 wide, 2×), `hero-desktop.png`, `hero-phone.png`, `art.png`. Section
+order, layout and proportions match mockups 01 and 02. Zero console/page
+errors. App re-shot on desktop and phone after the code split: unchanged.
+
+Live after `sudo -n systemctl restart echo` (`is-active` → active): `/`,
+`/app`, `/app?sample=lion-roar`, `/app?samples=1` 200 HTML; `/history`,
+`/samples` 200 JSON.
+
+## Deviations from the brief / mockups
+
+1. **Copy** changed as above (Job's instruction).
+2. **Footer links:** About → the "How it works" section; Credits →
+   `/app?samples=1` (every sample's recordist and licence). No such pages
+   exist.
+3. **"Upload a clip"** opens `/app`, not a file picker.
+4. **Hero labels** are the full sample names at one size on both layouts (the
+   phone mockup shortens them to "Myna", "Koel").
+5. **Phone "Two views" cards** use the full §5 descriptions; the phone mockup
+   shows shorter ones that §5 does not list.
+6. **Step icons** are the nearest lucide icons to the mockup's.
+7. **Address-bar colour** is `paper` on `/` and `night` in the app.

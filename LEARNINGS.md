@@ -581,6 +581,40 @@ oscillator → `MediaStreamDestination` stream, or an empty `MediaStream`) and
 fine headless. That is enough to exercise the recording screen, Cancel and
 Stop. It does not test real capture or codecs — that stays a phone check.
 
+### No Suspense boundary above the R3F Canvas (Design v2 S4)
+react-three-fiber's `<Canvas>` re-throws suspensions from inside the 3D scene
+into the DOM tree (its internal `Block`), and drei `<Text>` suspends while its
+font loads. With `React.lazy(() => import('./App.jsx'))` under a `<Suspense>`,
+React therefore replaced the WHOLE app with the fallback every time the scene
+mounted (first load, and each phone↔tablet layout switch). Symptom: `canvas`
+is visible, then `boundingBox()` is null — only in full e2e runs, never when
+the spec ran alone. With no boundary above it React keeps the current UI on
+screen instead. So the app chunk is loaded with a plain
+`import('./App.jsx').then(render)` in `main.jsx`. Don't wrap `<App>` or
+`<Scene>` in `<Suspense>` without re-running the whole e2e suite.
+
+### Landing art is generated and committed (Design v2 S4)
+`build_landing_art.py` is the only source of `frontend/src/assets/landing/*`.
+It is deterministic, so `tests/test_landing_art.py` can regenerate the SVGs in
+memory and compare byte-for-byte; a re-extraction or a library change fails
+the test until the script is re-run and its output committed (now step 4 of
+CLAUDE.md's schema rule). The SVGs are imported with `?raw` and inlined, not
+used as `<img>`, because an `<img>` SVG cannot use the page's fonts for its
+labels. PNGs are written with `zlib` + `struct` — no Pillow in the venv.
+
+### Page weight depends on who compresses (Design v2 S4)
+uvicorn's StaticFiles sends JS/CSS uncompressed; Cloudflare compresses them at
+the edge. The landing page is 142 KB through the tunnel and 350 KB straight
+from `:8014`. If Echo is ever served without Cloudflare in front, add
+compression at the origin (e.g. Starlette's `GZipMiddleware`) before trusting
+any weight budget.
+
+### Tools that must be downloaded may be blocked (Design v2 S4)
+`npx lighthouse` was refused by the session's permission check (running
+freshly downloaded code). Don't plan a "done when" around a tool that isn't
+already in `node_modules`; either add it as a devDependency with Job's OK or
+have Job run it.
+
 ---
 
 ## Manual follow-ups for Job
@@ -597,3 +631,9 @@ Stop. It does not test real capture or codecs — that stays a phone check.
 - ~~**Phone app (Design v2 S3, 2026-11-12):** record end to end on the
   Android phone, and check Cancel discards.~~ **Done — Job confirmed both,
   2026-11-12.**
+- **Lighthouse on the landing page (Design v2 S4, 2026-11-12):** the brief's
+  "accessibility ≥ 95" was not measured. In desktop Chrome open
+  `echo.job-joseph.com`, DevTools → Lighthouse → Accessibility only →
+  Analyze (try both Mobile and Desktop). Record the scores in
+  VERIFICATION_LOG.md Session 13, or tell a Claude Code session to add
+  Lighthouse as a devDependency so it can be run on the Pi.

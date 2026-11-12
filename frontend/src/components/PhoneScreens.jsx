@@ -5,6 +5,7 @@ import Wordmark from './Wordmark.jsx'
 import { HEADER_BTN, PiMicControl } from './Controls.jsx'
 import { getSamples } from '../lib/api.js'
 import { fmtClock, fmtSigned } from '../lib/format.js'
+import { thumbFor } from '../lib/sampleArt.js'
 
 // Phone layouts (DESIGN_V2.md §4.5–4.7), shown below 640px. App decides which
 // screen is up; these only draw it. Touch targets are at least 44px.
@@ -109,7 +110,10 @@ export function PhoneHome({ actions, busy, onOpenHistory, onOpenSamples, onPickS
                 disabled={busy}
                 className="flex min-h-[60px] w-full items-center justify-between gap-3 border-b border-night-line py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
-                <span>
+                {thumbFor(s.id)
+                  ? <img src={thumbFor(s.id)} alt="" width="72" height="44" loading="lazy" className="h-11 w-[72px] shrink-0 rounded-lg object-cover" />
+                  : <span className="h-11 w-[72px] shrink-0 rounded-lg bg-[#16201A]" aria-hidden />}
+                <span className="min-w-0 flex-1">
                   <span className="block text-[17px] font-medium text-cream">{s.species}</span>
                   <span className="block text-sm text-muted-foreground">{Math.round(s.duration_s)} s</span>
                 </span>

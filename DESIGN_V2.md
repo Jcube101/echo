@@ -1,6 +1,6 @@
 # Echo — Design v2 (frontend redesign brief)
 
-**Status:** 🚧 In progress — S1, S2 and S3 shipped (see ROADMAP.md, "v1.6 — Frontend Redesign").
+**Status:** 🚧 In progress — S1–S4 shipped; S5 (tests + docs) remains (see ROADMAP.md, "v1.6 — Frontend Redesign").
 **Design canvas:** https://claude.ai/artifact/LTDnZh1wrRMpBHxwdpmnaH (private to Job — Claude Code can't open it).
 **Screenshots:** `docs/design-v2/` — **open the matching PNG before building each screen** and match it. Where a PNG and this text disagree, this text wins; flag the mismatch to Job.
 **Scope:** frontend only, plus one small backend route. No changes to extraction, the feature schema, storage, retention or any API response.
@@ -235,11 +235,16 @@ for samples.
 
 ## 5. Copy (final — don't rewrite)
 
-**Hero sub-line (desktop):** Record a bird in the park, drop in a clip, or start
+> **Copy change (Job, 2026-11-12):** no bird language in the landing copy. The
+> two hero sub-lines and FAQ question 2 below were reworded in S4; they
+> previously read "Record a bird in the park…" and "Does it tell me which bird
+> or animal it is?". Sample names and credits are the only exception (D2).
+
+**Hero sub-line (desktop):** Record a sound in the park, drop in a clip, or start
 with a sample. Echo traces the sound as a path through pitch, timbre and motion,
 and plays it back in step.
 
-**Hero sub-line (phone):** Record a bird in the park or drop in a clip. Echo
+**Hero sub-line (phone):** Record a sound in the park or drop in a clip. Echo
 traces it as a path you can turn and replay.
 
 **Two views:** 3D Trail — "The whole clip as one path. Drag to orbit, and watch
@@ -252,7 +257,7 @@ Hover for exact values."
 1. **What am I looking at?** Each point is one moment of sound, about fifty every
    second. Where it sits shows its pitch (high or low), timbre (bright or dark) and
    motion (steady or busy). Bigger, brighter points are louder.
-2. **Does it tell me which bird or animal it is?** No. Echo shows the shape of any
+2. **Does it tell me what made the sound?** No. Echo shows the shape of any
    sound, whatever made it. It doesn’t try to name the source.
 3. **What can I put in?** Record up to 60 seconds in your browser, or upload MP3,
    WAV, M4A, Opus, or a video file, up to 20 MB.
@@ -276,7 +281,7 @@ in the same change.
 | # | Decision | Status |
 |---|---|---|
 | D1 | Landing at `/`, app at `/app`, PWA starts at `/app` | ✅ Decided (Job) |
-| D2 | No bird/species/ID language; no future-project teasers on the site | ✅ Decided (Job) |
+| D2 | No bird/species/ID language; no future-project teasers on the site. Reaffirmed 2026-11-12: this includes the §5 landing copy | ✅ Decided (Job) |
 | D3 | Self-hosted fonts via `@fontsource` | ✅ Proposed in this brief |
 | D4 | **3D trail colour.** Green → amber → pale-cream by loudness, on `night`, replacing the teal additive-glow trail. | ✅ Decided (Job, 2026-11-12) — built in S2 |
 | D5 | Spectrogram colour ramp: `#16201A` → `#2F4A3A` (35%) → `#E8B04B` (70%) → `#F4EFE4`, replacing the current ramp | ✅ Decided (Job, 2026-11-12) — built in S2 |
