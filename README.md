@@ -130,6 +130,7 @@ serves it from disk), so build only when the work is ready to be seen.
 npm test                       # pytest + Vitest (repo root)
 npm run test:e2e               # Playwright, against a throwaway server
 npm run lighthouse             # landing-page accessibility, mobile + desktop
+node e2e/build-icons.mjs       # redraw the favicon + PWA icons (frontend/public)
 .venv/bin/python build_landing_art.py   # regenerate landing art after the
                                         # sample library changes
 ```

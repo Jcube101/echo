@@ -125,9 +125,9 @@ def test_API_006_upload_video_extracts_audio_track(client, audio_factory, tmp_pa
 
 def test_API_007_history_list_shape_and_order(client, audio_factory):
     """GET /history: rows newest-first, each exactly {id, created_at,
-    source_type, duration_s} — no feature payload, no paths leaked.
+    source_type, name, duration_s} — no feature payload, no paths leaked.
 
-    SPEC.md: "GET /history | List of {id, created_at, source_type,
+    SPEC.md: "GET /history | List of {id, created_at, source_type, name,
     duration_s}, newest first."
     """
     ids = []
@@ -143,7 +143,7 @@ def test_API_007_history_list_shape_and_order(client, audio_factory):
     assert len(rows) == 2
     assert rows[0]["id"] == ids[-1]  # newest first
     for row in rows:
-        assert set(row) == {"id", "created_at", "source_type", "duration_s"}
+        assert set(row) == {"id", "created_at", "source_type", "name", "duration_s"}
 
 
 def test_API_008_history_item_full_payload(client, audio_factory):
@@ -159,7 +159,7 @@ def test_API_008_history_item_full_payload(client, audio_factory):
     res = client.get(f"/history/{clip_id}")
     assert res.status_code == 200
     data = res.json()
-    assert set(data) == {"id", "created_at", "source_type", "duration_s", "features", "spectrogram", "audio_url"}
+    assert set(data) == {"id", "created_at", "source_type", "name", "duration_s", "features", "spectrogram", "audio_url"}
     assert data["audio_url"] == f"/audio/{clip_id}.opus"
     assert data["features"]
 
@@ -421,3 +421,57 @@ def test_API_023_capture_duration_validation(client):
     """
     assert client.post("/capture", json={"duration": 61}).status_code == 422
     assert client.post("/capture", json={"duration": 0}).status_code == 422
+
+
+def test_API_024_upload_source_and_name_in_history(client, audio_factory):
+    """/upload keeps an uploaded file's name and tells a browser recording
+    (form field source=recording) from a file upload, so the history list can
+    label each clip. The name is reduced to a bare, printable, <=80-char
+    filename; a recording stores no name; an unknown source is an upload.
+    """
+    def post(filename, **data):
+        path = audio_factory.tone(duration=0.6, freq=440.0, amp=0.5, name="src")
+        with open(path, "rb") as f:
+            res = client.post("/upload", files={"file": (filename, f, "audio/wav")},
+                              data=data)
+        assert res.status_code == 200
+        return client.get(f"/history/{res.json()['id']}").json()
+
+    plain = post("park walk.wav")
+    assert (plain["source_type"], plain["name"]) == ("upload", "park walk.wav")
+
+    rec = post("recording.webm", source="recording")
+    assert (rec["source_type"], rec["name"]) == ("recording", None)
+
+    odd = post("../../etc/" + "x" * 200 + ".wav", source="something-else")
+    assert odd["source_type"] == "upload"
+    assert odd["name"] == "x" * 80
+
+    by_id = {r["id"]: r for r in client.get("/history").json()}
+    assert by_id[plain["id"]]["name"] == "park walk.wav"
+    assert by_id[rec["id"]]["source_type"] == "recording"
+
+
+def test_API_025_source_name_column_added_to_existing_db(tmp_path, monkeypatch):
+    """A clips table created before `source_name` existed gets the column on
+    startup; its old rows read back with name = None."""
+    import sqlite3
+    from fastapi.testclient import TestClient
+    from conftest import _reload_backend
+
+    data = tmp_path / "data"
+    data.mkdir()
+    con = sqlite3.connect(data / "echo.sqlite")
+    con.execute("CREATE TABLE clips (id VARCHAR PRIMARY KEY, created_at DATETIME, "
+                "source_type VARCHAR, duration_s FLOAT, feature_path VARCHAR, "
+                "audio_path VARCHAR, schema_version INTEGER)")
+    con.execute("INSERT INTO clips VALUES ('old1', '2026-07-01 10:00:00', 'upload', "
+                "1.0, 'f.json', 'a.opus', 1)")
+    con.commit()
+    con.close()
+
+    main = _reload_backend(data, monkeypatch)
+    with TestClient(main.app) as c:
+        rows = c.get("/history").json()
+    assert rows == [{"id": "old1", "created_at": "2026-07-01T10:00:00+00:00",
+                     "source_type": "upload", "name": None, "duration_s": 1.0}]

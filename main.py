@@ -13,7 +13,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -40,12 +40,19 @@ def _startup() -> None:
 
 # --- POST /upload -------------------------------------------------------------
 @app.post("/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...), source: str = Form("upload")):
     """Accept an audio file OR a browser-recorded blob; run the pipeline.
 
     Source-agnostic (the future Avian project POSTs here like any other
     client). Enforces the 20 MB / 60 s limits server-side.
+
+    `source` is an optional form field: "recording" marks a clip recorded in
+    the browser; anything else (or nothing) is a plain file upload, whose
+    filename is kept for the history list. It only labels the clip — the
+    pipeline is identical either way.
     """
+    source_type = "recording" if source == "recording" else "upload"
+    source_name = _display_name(file.filename) if source_type == "upload" else None
     suffix = Path(file.filename or "clip").suffix or ".bin"
     tmp_dir = Path(tempfile.mkdtemp(prefix="echo_up_"))
     raw_path = tmp_dir / f"raw_{uuid.uuid4().hex[:8]}{suffix}"
@@ -69,7 +76,8 @@ async def upload(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Empty upload.")
 
     try:
-        result = process_audio(raw_path, source_type="upload")
+        result = process_audio(raw_path, source_type=source_type,
+                               source_name=source_name)
     except ProcessingError as e:
         raise HTTPException(status_code=422, detail=str(e))
     finally:
@@ -203,6 +211,16 @@ def health():
 def schema_audit_endpoint():
     import schema_audit
     return schema_audit.audit_all()
+
+
+def _display_name(filename: str | None) -> str | None:
+    """An uploaded file's name, reduced to something safe to show in a list:
+    no directory part, no control characters, at most 80 characters."""
+    if not filename:
+        return None
+    base = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    base = "".join(ch for ch in base if ch.isprintable()).strip()
+    return base[:80] or None
 
 
 def _rmdir(d: Path) -> None:

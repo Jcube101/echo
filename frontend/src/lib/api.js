@@ -24,9 +24,11 @@ export function friendlyError(err) {
 }
 
 // Upload an audio file OR a recorded blob — same endpoint, same pipeline.
-export async function uploadAudio(fileOrBlob, filename = 'clip') {
+// `source` ('upload' | 'recording') only labels the clip in the history list.
+export async function uploadAudio(fileOrBlob, filename = 'clip', source = 'upload') {
   const form = new FormData()
   form.append('file', fileOrBlob, filename)
+  form.append('source', source)
   const res = await fetch('/upload', { method: 'POST', body: form })
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()

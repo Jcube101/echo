@@ -57,7 +57,10 @@ describe('Sidebar', () => {
     expect(clipLabel({ kind: 'upload', name: 'park.m4a' })).toBe('Uploaded · park.m4a')
     expect(clipLabel({ kind: 'upload' })).toBe('Uploaded')
     expect(clipLabel({ kind: 'pi_mic' })).toBe('Pi microphone')
-    // Reloaded from history: the API can't tell an upload from a recording.
+    // Reloaded from history: the API's source_type and filename.
+    expect(clipLabel({ kind: 'history', sourceType: 'upload', name: 'park.m4a' })).toBe('Uploaded · park.m4a')
+    expect(clipLabel({ kind: 'history', sourceType: 'recording' })).toBe('Recorded in browser')
+    // A clip saved before the API kept either could be an upload or a recording.
     expect(clipLabel({ kind: 'history', sourceType: 'upload' })).toBe('Upload or recording')
     expect(clipLabel({ kind: 'history', sourceType: 'pi_mic' })).toBe('Pi microphone')
     expect(sourceLabel('something-new')).toBe('Clip')

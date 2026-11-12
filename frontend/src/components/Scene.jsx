@@ -3,6 +3,12 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, Line, Text, Billboard } from '@react-three/drei'
 import * as THREE from 'three'
 import { buildGeometry, WORLD } from '../lib/features.js'
+// The axis labels are drawn inside the WebGL scene, so they need a font FILE
+// (troika-three-text reads woff/ttf, not woff2). Without one drei's <Text>
+// downloads a default font from a CDN, which breaks the labels offline. This
+// is the same IBM Plex Mono the rest of the UI uses, served from our own
+// build and precached by the service worker (vite.config.js).
+import labelFont from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff?url'
 
 // --- Fixed camera framing (Part D #4) ----------------------------------------
 // Direction is fixed (locked polar angle from the previous session — Y-rotation
@@ -146,7 +152,7 @@ function Ticks({ axis }) {
     else pos = [-W - 0.35, v, W + 0.08]                        // Y (motion), front-left
     return (
       <Billboard key={axis + v} position={pos}>
-        <Text fontSize={0.26} color={TICKCOL} anchorX="center" anchorY="middle">
+        <Text font={labelFont} fontSize={0.26} color={TICKCOL} anchorX="center" anchorY="middle">
           {v}
         </Text>
       </Billboard>
@@ -178,13 +184,13 @@ function WorldBox() {
       <Ticks axis="motion" />
 
       <Billboard position={[0, -WORLD - 0.95, WORLD + 0.5]}>
-        <Text fontSize={0.5} color={AXISCOL}>Pitch</Text>
+        <Text font={labelFont} fontSize={0.44} color={AXISCOL}>Pitch</Text>
       </Billboard>
       <Billboard position={[WORLD + 1.15, -WORLD - 0.5, 0]}>
-        <Text fontSize={0.5} color={AXISCOL}>Timbre</Text>
+        <Text font={labelFont} fontSize={0.44} color={AXISCOL}>Timbre</Text>
       </Billboard>
       <Billboard position={[-WORLD - 1.15, 0.2, WORLD]}>
-        <Text fontSize={0.5} color={AXISCOL}>Motion</Text>
+        <Text font={labelFont} fontSize={0.44} color={AXISCOL}>Motion</Text>
       </Billboard>
     </group>
   )

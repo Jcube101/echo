@@ -90,7 +90,7 @@ export default function App() {
     setSampleMeta(isSample ? res : null)
     setClipInfo(isSample ? null : {
       kind: info?.kind || 'history',
-      name: info?.name || null,
+      name: info?.name || res.name || null,
       sourceType: res.source_type || null,
       createdAt: res.created_at || (info ? new Date().toISOString() : null),
     })

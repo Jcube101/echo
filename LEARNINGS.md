@@ -505,6 +505,9 @@ which exists on this machine. To test the no-dist case, point the seam at a
 nonexistent directory (`_reload_backend(..., frontend_dist=tmp/"nope")`).
 
 ### PWA icons are placeholders, rendered from `favicon.svg` (Design v2 S1)
+*(Superseded 2026-11-12: the icons are now drawn and rendered by
+`node e2e/build-icons.mjs`; edit that script, not the PNGs.)*
+
 `frontend/public/pwa-*.png` and `apple-touch-icon.png` were rendered once from
 `frontend/public/favicon.svg` with Playwright's Chromium (no image library is
 installed in the venv). The maskable/apple versions use a square background
@@ -634,6 +637,35 @@ session changes anything a marked test touches, run that one test if it is
 read-only (`pytest -m tunnel -k HW_005` writes nothing).
 
 ---
+
+### E2E-010 was a typo, not the Pi's audio stack (2026-11-12)
+For four months `recording-fake-device.spec.mjs` was written off as "no audio
+session on the Pi, pipewire is masked". The real cause: the Playwright config
+passed `--use-fake-device-for-media-capture` and
+`--use-fake-ui-for-media-capture`. Neither flag exists. Chromium ignores
+unknown flags silently, so the fake mic was never enabled and `getUserMedia`
+went looking for real hardware. The real names end in `-for-media-stream`
+(only `--use-file-for-fake-audio-capture` ends in `-capture`). Lessons: a
+plausible environment story is not a root cause until the simplest input (the
+flag spelling) has been checked, and an ignored flag fails silently — when a
+browser switch seems to do nothing, check its name first.
+
+### 3D text needs a font file, or it calls a CDN (2026-11-12)
+drei's `<Text>` (troika-three-text) downloads a default font from a CDN when
+no `font` prop is given, so labels inside the canvas don't work offline even
+though the page's CSS fonts do. Pass a URL to a local file — and it must be
+`.woff`/`.ttf`/`.otf`, since troika can't read `.woff2`. `@fontsource`
+packages ship a `.woff` next to every `.woff2`
+(`import url from '@fontsource/…/files/…-normal.woff?url'`). The service
+worker only precached `.woff2`, so that one `.woff` is listed by name in
+`vite.config.js`. `app-boot.spec.mjs` fails if `/app` requests anything from
+another origin.
+
+### History is shared, so stored filenames are public (2026-11-12)
+`/history` has no accounts: every visitor sees every clip. Since uploads now
+keep their filename for the list, a filename is visible to anyone using the
+site. `main._display_name` strips directories and control characters and caps
+it at 80 characters, but it does not hide the name itself.
 
 ## Manual follow-ups for Job
 

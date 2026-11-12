@@ -256,6 +256,22 @@ stores neither a filename nor whether a clip was uploaded or recorded, so
 history clips read "Upload or recording"; the 3D axis labels still fetch
 their font from a CDN, the one part of the app shell that isn't offline
 
+- ✅ **Shipped** — v1.6 follow-ups (2026-11-12, at Job's request). Only the
+  camera presets remain open.
+  - **E2E-010 passes.** The Playwright config used Chromium flag names that
+    don't exist (`…-for-media-capture`), so the fake mic was never on; the
+    real names are `--use-fake-device-for-media-stream` and
+    `--use-fake-ui-for-media-stream`. The earlier "no audio session /
+    pipewire" diagnosis was wrong. Playwright is now 31 of 31
+  - **PWA icon.** A tapering trail in the loudness colours ending at the
+    playhead ring; all five files are drawn by `node e2e/build-icons.mjs`
+  - **History clips say what they are.** `/upload` takes an optional
+    `source=recording` form field and keeps an uploaded file's name;
+    `/history` rows gain `name`, and `source_type` gains `recording`. Clips
+    saved earlier still read "Upload or recording" until they age out
+  - **3D axis labels work offline.** They use the build's own IBM Plex Mono
+    (`.woff`, precached), so `/app` fetches nothing from another origin
+
 ---
 
 ## v2 — Avian Visitors as a Client of Echo (future) — 📋 Planned

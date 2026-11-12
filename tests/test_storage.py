@@ -153,7 +153,8 @@ def test_STO_005_metadata_only_db_stays_small(isolated_backend, audio_factory):
 
     columns = {c.name: c.type.python_type for c in db.Clip.__table__.columns}
     assert set(columns) == {"id", "created_at", "source_type", "duration_s",
-                            "feature_path", "audio_path", "schema_version"}
+                            "feature_path", "audio_path", "schema_version",
+                            "source_name"}
     assert columns["id"] is str
     assert columns["source_type"] is str
     assert columns["feature_path"] is str

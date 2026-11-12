@@ -1637,3 +1637,46 @@ follow-ups), `DESIGN_V2.md` (status).
 | S3 Phone app | recording end to end on Job's Android phone | Session 12; Job's phone (incl. Cancel) |
 | S4 Landing page | matches §4.1–4.2; Lighthouse a11y ≥ 95; < 300 KB without fonts | Session 13: 100 / 100; 142 KB as served |
 | S5 Tests + docs | suites and docs current | this session |
+
+
+---
+
+# Session 15 — v1.6 follow-ups (2026-11-12)
+
+Job asked for three things: resolve the failing Playwright test, make a real
+PWA icon and deploy it, and fix the history clip labels and the 3D axis-label
+font.
+
+## What changed
+
+| Item | Change |
+|---|---|
+| E2E-010 | `e2e/playwright.config.mjs` used Chromium flags that don't exist (`--use-fake-device-for-media-capture`, `--use-fake-ui-for-media-capture`). Renamed to `…-for-media-stream`. The test now passes with pipewire still masked; the "no audio session" diagnosis from 2026-07 was wrong. The `?record=1` test now requires a running recording instead of accepting the error toast |
+| PWA icon | New mark (tapering trail in the loudness colours, ending at the playhead ring). `e2e/build-icons.mjs` writes `favicon.svg`, `pwa-192.png`, `pwa-512.png`, `pwa-maskable-512.png`, `apple-touch-icon.png` |
+| History clips | `clips.source_name` column (added in place by `db._ensure_columns`); `/upload` accepts form field `source` (`recording` or upload) and keeps an upload's filename; `/history` and `/history/{id}` return `name`; `source_type` can be `recording`. Sidebar, phone result header and History sheet show "Uploaded · name" / "Recorded in browser" |
+| 3D axis labels | `Scene.jsx` passes the build's IBM Plex Mono `.woff` to drei `<Text>`; the file is precached by the service worker |
+
+Not touched: `extraction.py`, the feature schema (no version bump needed —
+feature JSONs are unchanged), upload limits, retention.
+
+## Results (on the Pi)
+
+| Check | Result |
+|---|---|
+| `pytest` (default run) | **105 passed**, 6 deselected (new: API-024, API-025) |
+| Vitest | **84 passed** |
+| Playwright | **31 passed, 0 failed** (new: `/app` loads everything from its own origin) |
+| `npm run build` | OK; precache 18 entries (the label `.woff` is the new one) |
+| `sudo -n systemctl restart echo` | `active`; live DB gained `source_name`, its 41 existing rows return `name: null` |
+| Screenshot of `/app` on the live service | axis labels and ticks render in Plex Mono; zero requests to other origins |
+
+Lighthouse was not re-run (the landing page did not change).
+
+## Known limits
+
+- The 41 clips saved before this change still read "Upload or recording";
+  nothing recorded which they were. They age out under the 50-clip rule.
+- History is shared between all visitors, so an uploaded file's name is now
+  visible to anyone (see LEARNINGS.md).
+- The new icon reaches an already-installed PWA only when the phone refreshes
+  its manifest; reinstalling shows it at once.

@@ -29,8 +29,10 @@ test('sidebar shows the clip card, a live playhead readout and recent clips', as
   // The new clip is listed under Recent clips and reloads on click.
   const recent = sidebar.getByTestId('recent-clip')
   await expect(recent).toHaveCount(1)
+  // The stored clip keeps its filename, in the list and once reloaded.
+  await expect(recent.first()).toContainText('Uploaded · tone.wav')
   await recent.first().click()
-  await expect(sidebar.getByRole('heading', { name: 'Upload or recording' })).toBeVisible()
+  await expect(sidebar.getByRole('heading', { name: 'Uploaded · tone.wav' })).toBeVisible()
   expect(errors).toEqual([])
 })
 

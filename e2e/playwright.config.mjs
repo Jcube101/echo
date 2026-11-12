@@ -34,8 +34,8 @@ export default defineConfig({
     // Harmless for every other spec (only getUserMedia calls are affected).
     launchOptions: {
       args: [
-        '--use-fake-device-for-media-capture',
-        '--use-fake-ui-for-media-capture',
+        '--use-fake-device-for-media-stream',
+        '--use-fake-ui-for-media-stream',
         `--use-file-for-fake-audio-capture=${TONE_WAV}`,
       ],
     },

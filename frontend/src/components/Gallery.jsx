@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { HardDrive, Loader2, Music, Upload } from 'lucide-react'
+import { HardDrive, Loader2, Mic, Music, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { getHistory, getClip, friendlyError } from '../lib/api.js'
 
 const SOURCE = {
   upload: { Icon: Upload, label: 'Upload' },
+  recording: { Icon: Mic, label: 'Recording' },
   pi_mic: { Icon: HardDrive, label: 'Pi mic' },
 }
 
@@ -91,7 +92,7 @@ export default function Gallery({ open, onClose, currentId, refreshKey, onLoaded
                 <s.Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm text-cream">{s.label} · {it.duration_s.toFixed(1)}s</span>
-                  <span className="block text-[11px] text-muted-foreground truncate">{when(it.created_at)} · {it.id.slice(0, 8)}</span>
+                  <span className="block text-[11px] text-muted-foreground truncate">{it.name ? `${it.name} · ${when(it.created_at)}` : `${when(it.created_at)} · ${it.id.slice(0, 8)}`}</span>
                 </span>
                 {loadingId === it.id && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
               </button>

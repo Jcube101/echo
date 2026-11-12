@@ -7,23 +7,24 @@ import { WORLD } from '../lib/features.js'
 // Desktop sidebar (DESIGN_V2.md §4.3): the loaded clip's details, a read-only
 // readout of where the playhead is in the box, and the three latest clips.
 
-// What /history can tell us about a stored clip. The API records browser
-// recordings and file uploads under the same source_type ("upload"), so a clip
-// reloaded from history can't say which it was; a clip made in this session can
-// (see clipLabel).
-const SOURCE_LABEL = {
-  upload: 'Upload or recording',
-  pi_mic: 'Pi microphone',
-}
-export function sourceLabel(sourceType) {
-  return SOURCE_LABEL[sourceType] || 'Clip'
+// How a stored clip is labelled, from what /history returns: its source_type
+// and, for an uploaded file, its name. Clips saved before the API kept either
+// have source_type "upload" and no name — those could be an upload or a browser
+// recording, and the label says so.
+export function sourceLabel(sourceType, name) {
+  if (sourceType === 'recording') return 'Recorded in browser'
+  if (sourceType === 'pi_mic') return 'Pi microphone'
+  if (sourceType === 'upload') return name ? `Uploaded · ${name}` : 'Upload or recording'
+  return 'Clip'
 }
 
+// The loaded clip's label. A clip made in this session knows how it was made
+// (info.kind); one reloaded from history uses what the API stored.
 export function clipLabel(info) {
   if (info.kind === 'recording') return 'Recorded in browser'
   if (info.kind === 'upload') return info.name ? `Uploaded · ${info.name}` : 'Uploaded'
   if (info.kind === 'pi_mic') return 'Pi microphone'
-  return sourceLabel(info.sourceType)
+  return sourceLabel(info.sourceType, info.name)
 }
 
 function Eyebrow({ children }) {
@@ -183,7 +184,7 @@ function RecentClips({ refreshKey, currentId, onPick, onOpenHistory }) {
               (it.id === currentId ? 'bg-night-3/60' : '')}
           >
             <span className="min-w-0">
-              <span className="block truncate text-[15px] text-cream">{sourceLabel(it.source_type)}</span>
+              <span className="block truncate text-[15px] text-cream">{sourceLabel(it.source_type, it.name)}</span>
               <span className="block text-[13px] text-muted-foreground">{fmtWhen(it.created_at)}</span>
             </span>
             <span className="shrink-0 font-mono text-[13px] tabular-nums text-muted-foreground">

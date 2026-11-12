@@ -35,11 +35,21 @@ Everything else in this plan still stands; counts further down are the
 
 | Suite | Now | Result |
 |---|---|---|
-| Backend (`tests/`, default markers) | 103 pytest cases | **103 passed**, 6 deselected |
+| Backend (`tests/`, default markers) | 105 pytest cases | **105 passed**, 6 deselected |
 | Frontend unit (`frontend/src/__tests__/`) | 13 files, 84 Vitest cases | **84 passed** |
-| E2E (`e2e/specs/`) | 14 specs, 30 test cases | **29 passed**; E2E-010 still fails for the same environment reason (no audio session) |
+| E2E (`e2e/specs/`) | 14 specs, 31 test cases | **31 passed**, including E2E-010 (see the note below) |
 | Lighthouse (`npm run lighthouse`) | landing page, mobile + desktop | **accessibility 100 / 100** |
 | Tunnel smoke (HW-005, opt-in, read-only) | updated for `/app` and the 14-sample library | **passed** |
+
+**E2E-010 fixed (2026-11-12, VERIFICATION_LOG.md Session 15).** Every note
+further down that blames "no audio session" or the masked `pipewire.service`
+is superseded: the Playwright config passed Chromium flags that don't exist
+(`--use-fake-device-for-media-capture`, `--use-fake-ui-for-media-capture`), so
+the fake mic was never enabled and Chromium looked for a real device. With the
+real flag names (`…-for-media-stream`) the test passes on the Pi with pipewire
+still masked. Also new that day: API-024 (upload source + filename in
+history), API-025 (`source_name` column added to an existing DB), and an
+app-boot case asserting `/app` requests nothing from another origin.
 
 New IDs:
 
@@ -916,7 +926,9 @@ them would violate a rule:
 
 **Open, by design, not by omission:**
 - **HW-008** — no iPhone available; deferred.
-- **E2E-010** — root-caused to no audio session on this Pi login; fixing it
+- **E2E-010** — *(fixed 2026-11-12: the cause was misnamed Chromium flags, not
+  the audio session — see "Design v2 additions" above. Original note follows.)*
+  root-caused to no audio session on this Pi login; fixing it
   would mean unmasking the user `pipewire.service`, which Job declined
   (2026-07-19) since it's deliberately masked and would extend WirePlumber's
   device policy to the shared USB mic. Left failing, documented.

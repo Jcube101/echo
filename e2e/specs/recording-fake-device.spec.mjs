@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test'
 import { trackConsoleErrors } from '../helpers.mjs'
 
 // E2E-010 — in-browser recording via Chromium's fake media device
-// (config-wide --use-fake-device-for-media-capture /
-// --use-fake-ui-for-media-capture, feeding our synthetic tone as the
+// (config-wide --use-fake-device-for-media-stream /
+// --use-fake-ui-for-media-stream, feeding our synthetic tone as the
 // "microphone" signal): tap Record -> countdown visible -> Stop -> blob
 // POSTs to /upload -> renders. Exercises the real MediaRecorder code path
 // with no real mic.
@@ -25,5 +25,8 @@ test('recording via a fake mic device runs the real MediaRecorder path', async (
   await page.getByTitle('Stop recording').click()
 
   await expect(page.getByText(/clip [0-9a-f]+/)).toBeVisible({ timeout: 20_000 })
+
+  // The clip is stored as a recording, not as a file upload.
+  await expect(page.getByTestId('recent-clip').first()).toContainText('Recorded in browser')
   expect(errors).toEqual([])
 })

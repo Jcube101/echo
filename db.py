@@ -39,6 +39,10 @@ class Clip(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc))
     source_type: Mapped[str] = mapped_column(String)   # upload | recording | pi_mic
+    # Original filename of an uploaded file, shown in the history list. NULL for
+    # recordings, Pi-mic captures and rows written before this column existed
+    # (those older rows also stored browser recordings as "upload").
+    source_name: Mapped[str | None] = mapped_column(String, nullable=True)
     duration_s: Mapped[float] = mapped_column(Float)
     feature_path: Mapped[str] = mapped_column(String)  # relative to ROOT
     audio_path: Mapped[str] = mapped_column(String)    # relative to ROOT
@@ -54,6 +58,7 @@ class Clip(Base):
             "created_at": self.created_at.replace(tzinfo=timezone.utc).isoformat()
             if self.created_at.tzinfo is None else self.created_at.isoformat(),
             "source_type": self.source_type,
+            "name": self.source_name,
             "duration_s": round(self.duration_s, 3),
         }
 
@@ -74,7 +79,8 @@ def _ensure_columns() -> None:
     `create_all` only creates missing TABLES, never adds columns to an existing
     one, so an already-deployed clips table (e.g. the Pi's 35 rows) won't get
     `schema_version` from the model alone. This adds it in place if missing;
-    existing rows get NULL (stale) until the migration stamps them. Idempotent.
+    existing rows get NULL (stale) until the migration stamps them. Same for
+    `source_name` (NULL simply means "no filename known"). Idempotent.
     """
     with engine.begin() as conn:
         cols = [row[1] for row in
@@ -82,3 +88,6 @@ def _ensure_columns() -> None:
         if cols and "schema_version" not in cols:
             conn.exec_driver_sql(
                 "ALTER TABLE clips ADD COLUMN schema_version INTEGER")
+        if cols and "source_name" not in cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE clips ADD COLUMN source_name VARCHAR")

@@ -86,16 +86,16 @@ pts/sec over the analyzed span (unless capped at 3000).
 
 | Method | Path            | Behavior |
 |--------|-----------------|----------|
-| POST   | `/upload`       | Accepts an audio file **or** a browser-recorded blob (same validation). Runs extraction, saves a history row + a transcoded playback copy, returns `{id, features}`. |
+| POST   | `/upload`       | Accepts an audio file **or** a browser-recorded blob (same validation). Runs extraction, saves a history row + a transcoded playback copy, returns `{id, features}`. Optional form field `source`: `recording` marks a browser recording; otherwise the clip is an `upload` and its filename is kept (bare name, ≤80 chars) for the history list. The field only labels the clip. |
 | POST   | `/capture`      | Body `{duration}` (≤60). Runs `~/bin/rec`, then the upload pipeline. Returns `{id, features}`. |
-| GET    | `/history`      | List of `{id, created_at, source_type, duration_s}`, newest first. |
+| GET    | `/history`      | List of `{id, created_at, source_type, name, duration_s}`, newest first. `source_type` is `upload`, `recording` or `pi_mic`; `name` is an uploaded file's name, else `null`. |
 | GET    | `/history/{id}` | Full feature JSON + playback audio URL for one clip. |
 | GET    | `/audio/{file}` | Serves the transcoded playback file. |
 | GET    | `/samples`      | Curated sample library: list with attribution + metadata. |
 | GET    | `/samples/{id}` | Full feature JSON + audio URL for one sample. |
 | GET    | `/samples/audio/{file}` | Serves a sample's playback file. |
 
-**Schema** — `clips(id, created_at, source_type, duration_s, feature_path, audio_path)`.
+**Schema** — `clips(id, created_at, source_type, source_name, duration_s, feature_path, audio_path, schema_version)`.
 Metadata + file paths only. **Audio blobs are never stored in the DB**
 (locked); audio lives on disk under `data/audio/`.
 

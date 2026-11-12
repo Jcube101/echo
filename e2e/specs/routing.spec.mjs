@@ -24,10 +24,8 @@ test('/app/anything serves the app (reserved for later deep links)', async ({ pa
 })
 
 test('/app?record=1 asks for the mic straight away and drops the param', async ({ page }) => {
-  // Asserts the recorder is STARTED (getUserMedia requested with no click),
-  // not that a recording completes: headless Chromium on the Pi has no audio
-  // session, so the fake-device capture itself fails here — the same known
-  // environment limit as E2E-010 (TEST_PLAN.md).
+  // The recorder starts with no click: getUserMedia is requested exactly once
+  // and (with the config's fake mic) the recording is running.
   await page.addInitScript(() => {
     const md = navigator.mediaDevices
     const real = md.getUserMedia.bind(md)
@@ -37,8 +35,7 @@ test('/app?record=1 asks for the mic straight away and drops the param', async (
   await page.goto('/app?record=1')
   await page.waitForFunction(() => window.__gumCalls === 1)
   await expect(page).toHaveURL(/\/app$/)
-  // Either outcome proves the recorder path ran: recording, or its error toast.
-  await expect(page.getByTitle('Stop recording').or(page.getByText('Recording failed'))).toBeVisible()
+  await expect(page.getByTitle('Stop recording')).toBeVisible()
   expect(await page.evaluate(() => window.__gumCalls)).toBe(1)
 })
 

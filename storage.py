@@ -81,7 +81,8 @@ def _enforce_retention(session) -> None:
     session.commit()
 
 
-def process_audio(raw_path: Path, source_type: str) -> dict:
+def process_audio(raw_path: Path, source_type: str,
+                  source_name: str | None = None) -> dict:
     """Full pipeline for one clip. Returns {id, features, duration_s, audio_url}.
 
     `raw_path` is deleted before returning (only the playback copy survives).
@@ -122,6 +123,7 @@ def process_audio(raw_path: Path, source_type: str) -> dict:
             clip = Clip(
                 id=clip_id,
                 source_type=source_type,
+                source_name=source_name,
                 duration_s=eff_duration,
                 schema_version=FEATURE_SCHEMA_VERSION,
                 # os.path.relpath (not Path.relative_to) so this still works

@@ -47,14 +47,14 @@ test('upload from the phone home opens the result; History reloads it', async ({
   await page.getByRole('button', { name: 'Back to home' }).click()
   await page.getByRole('button', { name: 'History' }).click()
   await page.getByRole('dialog', { name: /History/ }).getByTestId('history-item').first().click()
-  await expect(page.getByRole('heading', { name: 'Upload or recording' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Uploaded · tone.wav' })).toBeVisible()
 })
 
 test('recording screen: countdown, Stop uploads, Cancel discards', async ({ page }) => {
-  // A stand-in mic: headless Chromium on the Pi has no audio session for a
-  // real capture (the known E2E-010 limit, TEST_PLAN.md), so getUserMedia and
-  // MediaRecorder are replaced with minimal fakes. This tests the screen and
-  // its wiring, not the browser's codec path — that stays a real-phone check.
+  // A stand-in mic: getUserMedia and MediaRecorder are replaced with minimal
+  // fakes so Stop and Cancel behave the same on every run. This tests the
+  // screen and its wiring; the real MediaRecorder path is E2E-010
+  // (recording-fake-device.spec.mjs).
   await page.addInitScript(() => {
     window.__uploads = 0
     navigator.mediaDevices.getUserMedia = async () => new MediaStream()

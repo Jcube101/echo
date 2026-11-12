@@ -41,7 +41,12 @@ export default defineConfig({
         // reaches FastAPI.
         // Precache the latin font files too, so the installed app keeps its
         // typefaces offline (other subsets load on demand from the network).
-        globPatterns: ['**/*.{js,css,html}', 'assets/*-latin-*.woff2'],
+        // The one .woff is the 3D scene's axis-label font (Scene.jsx).
+        globPatterns: [
+          '**/*.{js,css,html}',
+          'assets/*-latin-*.woff2',
+          'assets/ibm-plex-mono-latin-400-normal-*.woff',
+        ],
         globIgnores: ['assets/*-latin-ext-*.woff2'],
         navigateFallback: '/index.html',
         navigateFallbackAllowlist: [/^\/(\?.*)?$/, /^\/app([/?].*)?$/],

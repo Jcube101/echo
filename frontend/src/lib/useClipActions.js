@@ -21,7 +21,7 @@ export function useClipActions({ onStatus, onResult, autoRecord = false }) {
     setInFlight('upload')
     onStatus('processing', 'Analyzing audio…')
     try {
-      const res = await uploadAudio(fileOrBlob, name)
+      const res = await uploadAudio(fileOrBlob, name, kind)
       onResult(res, { kind, name })
       onStatus('idle')
       toast.success('Uploaded', { description: name })
