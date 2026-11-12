@@ -594,9 +594,6 @@ Stop. It does not test real capture or codecs — that stays a phone check.
 - ~~**PWA install (Design v2 S1, 2026-11-12):** install on Android Chrome and
   confirm it opens at `/app`; confirm `/app?record=1` starts recording.~~
   **Done — Job confirmed both on his Android phone, 2026-11-12.**
-- **Phone app (Design v2 S3, 2026-11-12):** on the Android phone open the
-  installed Echo (or `echo.job-joseph.com/app`): tap the record circle, check
-  the ring counts up and the level bars move with sound, tap "Stop and see
-  its shape" and confirm the result screen plays back. Then record again and
-  tap Cancel: it should return home with nothing new in History. If both
-  work, mark S3 ✅ in ROADMAP.md.
+- ~~**Phone app (Design v2 S3, 2026-11-12):** record end to end on the
+  Android phone, and check Cancel discards.~~ **Done — Job confirmed both,
+  2026-11-12.**

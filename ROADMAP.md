@@ -28,7 +28,7 @@ this Pi.
 | v1 — Core Product (M1–M9) | ✅ Shipped |
 | v1.x — Polish | 🚧 In progress (1 of 4 items started) |
 | v1.5 — Extended Spectral Analysis Panel | ✅ Shipped (2D panel; 3D cube deferred) |
-| v1.6 — Frontend Redesign (Design v2) | 🚧 In progress (S1–S2 of 5 shipped, S3 built) |
+| v1.6 — Frontend Redesign (Design v2) | 🚧 In progress (S1–S3 of 5 shipped) |
 | v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
 
@@ -227,12 +227,12 @@ Frontend only, plus one backend route; no extraction/schema/storage changes.
   (D6) left out at Job's call. Known gaps, all from "no API changes": history
   clips can't show a filename or tell an upload from a browser recording.
   Deviations from the mockups are listed in VERIFICATION_LOG.md Session 11
-- 🚧 **In progress** — S3 Phone app: idle home, recording screen, result screen.
-  **Built and live (2026-11-12)** below 640px: home (record circle, Upload,
+- ✅ **Shipped** — S3 Phone app: idle home, recording screen, result screen.
+  **Live (2026-11-12)** below 640px: home (record circle, Upload,
   Pi mic, four samples), full-screen recording (countdown ring, live level
   bars, Stop / Cancel), result (tabs, trail, playhead chips, spectrogram,
-  dock, attribution). **Left before ✅:** Job to record end to end on his
-  Android phone (the brief's "done when"). Sample thumbnails on the home list
+  dock, attribution). Job confirmed on his Android phone: recording end to
+  end works, and Cancel returns home with nothing added to History. Sample thumbnails on the home list
   are deferred to S4, which generates static sample images anyway
 - 📋 **Planned** — S4 Landing page, desktop + phone, with a static hero SVG and
   FAQ (closed by default)
@@ -314,8 +314,8 @@ proves flaky in practice.
 
 ## Changelog
 
-- **2026-11-12** — Built v1.6 S3 (phone app: home, recording, result). 🚧 until
-  Job records end to end on his Android phone.
+- **2026-11-12** — Shipped v1.6 S3 (phone app: home, recording, result).
+  Recording end to end and Cancel confirmed by Job on his Android phone.
 - **2026-11-12** — Shipped v1.6 S2 (tokens + desktop app reskin). Job decided
   D4 (loudness-coloured trail) and D5 (new spectrogram ramp) in favour of the
   design; D6 (camera presets) left out for now.

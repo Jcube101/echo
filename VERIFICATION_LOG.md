@@ -1429,8 +1429,10 @@ Live after `sudo -n systemctl restart echo` (`is-active` → active): `/`,
 5. **The level bars** fill left to right with the last 4.8 s of loudness and
    then scroll; the mockup shows a static illustration.
 
-## Not verified (needs Job)
+## Verified by Job on his Android phone (2026-11-12)
 
-- Recording end to end on a real Android phone: tap record → ring and level
-  bars move → Stop → result screen; and Cancel returning home with nothing
-  added to History.
+- Tap record → the ring counts up and the level bars move with sound.
+- "Stop and see its shape" → the result screen appears and plays back.
+- Record again → Cancel → back on the home screen, nothing new in History.
+
+With that, the brief's "done when" for S3 is met.
