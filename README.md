@@ -2,9 +2,20 @@
 
 Echo turns an audio clip into an interactive **3D trail through
 pitch / timbre / motion space**, with a synced playback scrubber, a labelled 2D
-spectrogram strip, and a browsable history gallery. It is a general-purpose
-sound visualizer — it works on any audio and knows nothing about what made
-the sound.
+spectrogram strip, a seven-line Spectral panel, and a browsable history. It is
+a general-purpose sound visualizer — it works on any audio and knows nothing
+about what made the sound.
+
+Two pages (Design v2, see [DESIGN_V2.md](DESIGN_V2.md)):
+
+- **`/`** — a static landing page that explains Echo and links into the app.
+- **`/app`** — the app. It has three layouts: a phone app below 640px (home,
+  recording and result screens), a single-column layout up to 1200px, and a
+  desktop workspace with a clip sidebar above that. It installs as a PWA
+  that opens straight at `/app`.
+
+Links into the app can carry `?record=1` (start recording), `?sample=<id>`
+(open with that sample loaded) or `?samples=1` (open the sample library).
 
 Four ways to get audio in:
 
@@ -15,8 +26,8 @@ Four ways to get audio in:
    is the primary mobile use case.
 3. **Pi USB mic capture** — trigger a recording on the Pi itself for local
    testing.
-4. **Sample library** — no audio needed: the built-in “🔊 Sample sounds”
-   drawer has 14 curated clips — 3 birdcalls from Xeno-canto (Asian Koel,
+4. **Sample library** — no audio needed: the built-in Samples sheet has 14
+   curated clips — 3 birdcalls from Xeno-canto (Asian Koel,
    Common Myna, Rose-ringed Parakeet) plus 11 other animal sounds from
    Freesound (Lion, Wolf, Cow, Dog, Cat, Frog, Cricket, Pig, Red Deer,
    Bullfrog, Camel), chosen to spread across the pitch/timbre/motion range
@@ -41,6 +52,8 @@ echo/
 ├── db.py              SQLAlchemy models + SQLite session (M2)
 ├── storage.py         Audio transcode / retention helpers
 ├── samples.py         Sample-library store (served, never in the clips table)
+├── build_landing_art.py  Draws the landing page's static art from samples/
+├── migrate_schema.py / schema_audit.py  Feature-schema versioning tools
 ├── requirements.txt   Backend Python deps (installed into .venv)
 ├── data/              Runtime data (gitignored)
 │   ├── echo.sqlite    Metadata only — never audio blobs
@@ -51,8 +64,13 @@ echo/
 │   ├── audio/         Opus playback copies
 │   └── features/      Pre-extracted feature JSON
 ├── frontend/          React 18 + Vite 6 + Tailwind + react-three-fiber
+│   ├── src/Landing.jsx        Landing page (/)
+│   ├── src/App.jsx            The app (/app), all three layouts
+│   ├── src/assets/landing/    Generated art + sample details (committed)
 │   └── dist/          Production build served by StaticFiles (gitignored)
-├── package.json       Playwright verification tooling ONLY (not the app)
+├── tests/             pytest (backend, deployment, landing-art checks)
+├── e2e/               Playwright specs + the Lighthouse runner
+├── package.json       Playwright + Lighthouse verification tooling ONLY (not the app)
 └── verification/      Overnight self-check screenshots + logs (gitignored)
 ```
 
@@ -103,7 +121,18 @@ npm run build        # production build into frontend/dist
 
 In development the Vite dev server proxies backend calls to port 8014, so
 run both. In production only the backend runs — it serves the built
-frontend.
+frontend. **A build into `frontend/dist` is live immediately** (the backend
+serves it from disk), so build only when the work is ready to be seen.
+
+### Tests and checks
+
+```bash
+npm test                       # pytest + Vitest (repo root)
+npm run test:e2e               # Playwright, against a throwaway server
+npm run lighthouse             # landing-page accessibility, mobile + desktop
+.venv/bin/python build_landing_art.py   # regenerate landing art after the
+                                        # sample library changes
+```
 
 ### Feature extraction on its own
 

@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test'
 import { TONE_WAV, LONG_TONE_WAV } from '../fixtures-path.mjs'
 import { trackConsoleErrors, uploadFileAndWait } from '../helpers.mjs'
 
-// E2E-004 — history gallery: open the drawer, cards listed with source
-// icons, click one -> footer flips to that clip id, drawer closes.
+// E2E-004 — history gallery: open the History sheet, clips listed with their
+// source, click one -> the stage caption flips to that clip id, sheet closes.
 // Formalizes verify_gallery.mjs.
 //
 // SPEC.md: "History gallery listing past clips, click to reload via

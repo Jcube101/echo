@@ -6,7 +6,7 @@ import * as api from '../lib/api.js'
 
 vi.mock('../lib/api.js')
 
-// FE-008/FE-009 — samples-drawer attribution rendering + pick-to-load.
+// FE-008/FE-009 — Samples sheet attribution rendering + pick-to-load.
 // SPEC.md: "each sample's attribution (species, recordist, license + URL,
 // Xeno-canto source link) is shown in the UI" — a CC BY-NC-SA obligation,
 // not cosmetic.

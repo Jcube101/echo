@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test'
 import { trackConsoleErrors } from '../helpers.mjs'
 
-// E2E-005 — samples drawer: 14 cards (3 Xeno-canto birds + 11 Freesound
-// animals), each with visible recordist/license/source link; clicking one
-// loads the sample and the in-view credit line appears.
+// E2E-005 — Samples sheet: one card per sample in the library (Xeno-canto
+// and Freesound), each with visible recordist/license/source link; clicking
+// one loads the sample and its credit appears in the sidebar clip card.
+// (File name kept from when this was a drawer.)
 //
 // SPEC.md sample-library section + ROADMAP.md M9 done-criteria: "the
 // drawer lists the sample clips and each renders/plays end-to-end with
 // attribution visible."
-test('samples drawer lists attribution and loads a sample on click', async ({ page }) => {
+test('samples sheet lists attribution and loads a sample on click', async ({ page }) => {
   const errors = trackConsoleErrors(page)
   await page.goto('/app')
 

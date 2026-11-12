@@ -625,6 +625,14 @@ Two things it taught: an `aria-label` must CONTAIN the element's visible text
 replacing the label), and Playwright's `getByRole(..., { name: 'a: b' })`
 string match can miss a name assembled from adjacent text nodes — use a regex.
 
+### Opt-in tests rot quietly (Design v2 S5)
+`test_HW_005` asserted "3 samples" for four months after the library grew to
+14, because tunnel-marked tests are excluded from the default run and nobody
+ran it. Opt-in tests should compare against something in the repo (here, the
+sample manifest), never a number that product work will change. When a
+session changes anything a marked test touches, run that one test if it is
+read-only (`pytest -m tunnel -k HW_005` writes nothing).
+
 ---
 
 ## Manual follow-ups for Job

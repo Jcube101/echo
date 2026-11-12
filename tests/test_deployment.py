@@ -26,9 +26,11 @@ TEST_PLAN.md section G.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -191,8 +193,9 @@ def test_HW_004_systemd_stop_start_cycle():
 @pytest.mark.tunnel
 def test_HW_005_public_smoke():
     """Read-only public smoke test: GET https://echo.job-joseph.com/history
-    -> 200 JSON; / -> 200 containing <title>Echo; /samples -> the 3
-    samples. Writes nothing.
+    -> 200 JSON; / and /app -> 200 containing <title>Echo (landing page and
+    app share one index.html — Design v2); /samples -> every sample in the
+    repo's library. Writes nothing.
 
     SPEC.md deployment: "Done when curl https://echo.job-joseph.com/history
     returns real data."
@@ -205,9 +208,18 @@ def test_HW_005_public_smoke():
     assert root.status_code == 200
     assert "<title>Echo" in root.text
 
+    app = httpx.get(f"{PUBLIC_BASE_URL}/app", timeout=15.0)
+    assert app.status_code == 200
+    assert app.headers["content-type"].startswith("text/html")
+    assert "<title>Echo" in app.text
+
+    # The library has grown since this test was written (3 -> 14), so compare
+    # against the committed manifest instead of a hardcoded count.
+    manifest = json.loads((Path(__file__).resolve().parent.parent
+                           / "samples" / "samples.json").read_text())
     samples_res = httpx.get(f"{PUBLIC_BASE_URL}/samples", timeout=15.0)
     assert samples_res.status_code == 200
-    assert len(samples_res.json()) == 3
+    assert [s["id"] for s in samples_res.json()] == [s["id"] for s in manifest]
 
 
 @pytest.mark.tunnel

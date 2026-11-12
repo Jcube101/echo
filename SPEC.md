@@ -129,10 +129,25 @@ the repo manifest. Each manifest entry carries a `provider` field
 
 ## Frontend (locked: React 18 + Vite 6 + Tailwind + react-three-fiber)
 
+> **Design v2 (v1.6, November 2026):** the interface was redesigned without
+> changing any of the behaviour below. `DESIGN_V2.md` is the source of truth
+> for routes, layouts, tokens and copy; this list states what the UI must do.
+
+- **Routes:** a static landing page at `/`; the app at `/app` (and `/app/*`,
+  reserved). `/app?record=1`, `?sample=<id>` and `?samples=1` are accepted
+  once on load. Installable as a PWA that starts at `/app`.
+- **Layouts:** phone (< 640px: home, recording and result screens), a
+  single-column layout, and a desktop workspace (≥ 1200px) with a clip
+  sidebar showing the loaded clip, the values at the playhead and recent
+  clips.
 - 3D scene: point/line trail on **pitch / timbre / motion** axes, orbit
-  controls, amplitude driving point size + color intensity.
+  controls, amplitude driving point size + colour (green → amber → cream).
 - Upload UI (drag/drop + picker) and a record button (`MediaRecorder`, 60 s
-  max, visible countdown) posting to `/upload`.
+  max, visible countdown) posting to `/upload`. On the phone, recording is a
+  full screen with a countdown ring, live level bars, Stop, and a Cancel that
+  discards the audio without uploading.
+- Spectral panel: seven descriptors as stacked lanes on the scrubber's time
+  axis, each toggled by its name, with values at the playhead and on hover.
 - Pi capture button + duration selector calling `/capture`.
 - Playback scrubber synced to the trail (the current point highlights as
   playback advances).
@@ -140,8 +155,12 @@ the repo manifest. Each manifest entry carries a `provider` field
   (Hz)** and a **time axis** (aligned to the scrubber), scaled crisply to fill
   its container at any viewport width.
 - History gallery listing past clips, click to reload via `/history/{id}`.
-- “🔊 Sample sounds” drawer listing the curated sample library (distinct from
-  the personal History gallery), each card showing its attribution.
+- Samples sheet listing the curated sample library (distinct from the
+  personal History), each card showing its attribution. A loaded sample's
+  credit (recordist, licence, source link) is always visible: in the sidebar
+  on desktop, on the stage or dock otherwise.
+- No bird / species / identification language in the UI or landing copy;
+  sample names and credits are the only exception.
 
 Served in production by FastAPI `StaticFiles` from `frontend/dist`, mounted
 **last**, same origin — no CORS, no `credentials: 'include'`.

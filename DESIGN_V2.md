@@ -1,6 +1,6 @@
 # Echo — Design v2 (frontend redesign brief)
 
-**Status:** 🚧 In progress — S1–S4 shipped; S5 (tests + docs) remains (see ROADMAP.md, "v1.6 — Frontend Redesign").
+**Status:** ✅ Shipped — all five sessions complete (2026-11-12) (see ROADMAP.md, "v1.6 — Frontend Redesign").
 **Design canvas:** https://claude.ai/artifact/LTDnZh1wrRMpBHxwdpmnaH (private to Job — Claude Code can't open it).
 **Screenshots:** `docs/design-v2/` — **open the matching PNG before building each screen** and match it. Where a PNG and this text disagree, this text wins; flag the mismatch to Job.
 **Scope:** frontend only, plus one small backend route. No changes to extraction, the feature schema, storage, retention or any API response.

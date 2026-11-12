@@ -28,7 +28,7 @@ this Pi.
 | v1 — Core Product (M1–M9) | ✅ Shipped |
 | v1.x — Polish | 🚧 In progress (1 of 4 items started) |
 | v1.5 — Extended Spectral Analysis Panel | ✅ Shipped (2D panel; 3D cube deferred) |
-| v1.6 — Frontend Redesign (Design v2) | 🚧 In progress (S1–S4 of 5 shipped) |
+| v1.6 — Frontend Redesign (Design v2) | ✅ Shipped (2026-11-12) |
 | v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
 
@@ -206,7 +206,7 @@ trail concept, just on richer axes.
 
 ---
 
-## v1.6 — Frontend Redesign (Design v2) — 🚧 In progress
+## v1.6 — Frontend Redesign (Design v2) — ✅ Shipped
 
 Full brief, tokens, screen specs, final copy and open decisions: **`DESIGN_V2.md`**.
 Frontend only, plus one backend route; no extraction/schema/storage changes.
@@ -243,7 +243,18 @@ Frontend only, plus one backend route; no extraction/schema/storage changes.
   removed from the copy at Job's call. Lighthouse accessibility: **100** on mobile
   and desktop (`npm run lighthouse`, added as a dev dependency at Job's
   request), so every "done when" item is met
-- 📋 **Planned** — S5 Update Vitest/Playwright tests for the new UI; docs
+- ✅ **Shipped** — S5 Update Vitest/Playwright tests for the new UI; docs.
+  **Done (2026-11-12):** unit tests for the sidebar, phone screens, Spectral
+  panel and landing page (Vitest 56 → 84); stale test wording refreshed;
+  HW-005 no longer hardcodes 3 samples; README, SPEC and TEST_PLAN brought up
+  to date. Final state: pytest 103, Vitest 84, Playwright 29 of 30 (E2E-010
+  is the long-standing no-audio-session gap), Lighthouse accessibility 100
+
+Open after v1.6 (none blocking): camera presets (DESIGN_V2.md D6, left out at
+Job's call); real icons to replace the placeholder PWA icons; `/history`
+stores neither a filename nor whether a clip was uploaded or recorded, so
+history clips read "Upload or recording"; the 3D axis labels still fetch
+their font from a CDN, the one part of the app shell that isn't offline
 
 ---
 
@@ -321,6 +332,8 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-11-12** — Shipped v1.6 S5 (tests + docs); **v1.6 Frontend Redesign
+  complete.** Follow-ups listed at the end of the v1.6 section.
 - **2026-11-12** — Shipped v1.6 S4 (landing page). Decided (Job): no bird
   language in the landing copy — hero sub-lines and one FAQ question reworded,
   DESIGN_V2.md §5 updated. Lighthouse added as a dev dependency

@@ -1580,3 +1580,60 @@ Live after `sudo -n systemctl restart echo` (`is-active` → active): `/`,
    shows shorter ones that §5 does not list.
 6. **Step icons** are the nearest lucide icons to the mockup's.
 7. **Address-bar colour** is `paper` on `/` and `night` in the app.
+
+---
+
+# Session 14 — Design v2 S5: tests + docs (2026-11-12)
+
+Scope: DESIGN_V2.md §7 item 5. No UI or backend change; no new test exposed
+a defect.
+
+## Tests added
+
+| File | Cases | Covers |
+|---|---|---|
+| `Sidebar.test.jsx` (FE-012) | 7 | sample card + attribution links, Freesound naming, clip labels, example card, playhead readout, recent clips (three shown, "All N", click loads, current marked), load failure |
+| `PhoneScreens.test.jsx` (FE-013) | 8 | featured order + fallback, home actions wired, disabled while busy, no-recorder fallback, recording countdown + Stop + Cancel, result header, chips |
+| `AnalysisPanel.test.jsx` (FE-014) | 5 | seven lanes, toggle hides/shows a line with `aria-pressed`, values and playhead follow `playheadSec`, empty state, Crest colour |
+| `Landing.test.jsx` (FE-015) | 8 | one h1 + section headings, sample count from generated data, CTA hrefs, a deep link + thumbnail for all 14 samples, credits, FAQ closed with the agreed limits, no bird language, labelled art |
+
+Vitest: 56 → **84**.
+
+## Tests changed
+
+- `tests/test_deployment.py::test_HW_005` (opt-in tunnel smoke, read-only):
+  asserted 3 samples; now compares `/samples` with the committed manifest and
+  also checks `/app`. Run once: **passed**.
+- Comments only: `history-gallery.spec.mjs`, `samples-drawer.spec.mjs`,
+  `Samples.test.jsx` no longer describe drawers, source icons or a
+  three-sample library.
+
+## Final pass
+
+| Check | Result |
+|---|---|
+| `pytest` (default run) | **103 passed**, 6 deselected |
+| Vitest | **84 passed** (13 files) |
+| Playwright | **29 passed, 1 failed** (E2E-010, no audio session on the Pi — unchanged since 2026-07, left failing and documented at Job's call) |
+| `npm run lighthouse` | accessibility **100** mobile, **100** desktop |
+| `npm run build` | OK; precache 17 entries |
+| `python build_landing_art.py` | no diff (art is current) |
+| `sudo -n systemctl restart echo` | `active`; `/`, `/app` 200 HTML; `/history`, `/samples` 200 JSON at the public URL |
+
+## Docs updated
+
+`README.md` (two pages, three layouts, PWA, deep links, new commands, the
+"build is live" warning), `SPEC.md` (frontend section now describes the v2
+UI and points to DESIGN_V2.md), `TEST_PLAN.md` (a "Design v2 additions"
+section with current totals and new IDs), `ROADMAP.md` (v1.6 ✅ and its open
+follow-ups), `DESIGN_V2.md` (status).
+
+## v1.6 as shipped — what each "done when" rested on
+
+| Session | Done when | Evidence |
+|---|---|---|
+| S1 Routing + PWA | `/` and `/app` behind the tunnel; PWA installs on Android at `/app` | Session 10; Job's phone |
+| S2 Desktop reskin | both desktop views match §4.3–4.4, features intact | Session 11 screenshots + suites; Job's review |
+| S3 Phone app | recording end to end on Job's Android phone | Session 12; Job's phone (incl. Cancel) |
+| S4 Landing page | matches §4.1–4.2; Lighthouse a11y ≥ 95; < 300 KB without fonts | Session 13: 100 / 100; 142 KB as served |
+| S5 Tests + docs | suites and docs current | this session |

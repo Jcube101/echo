@@ -26,6 +26,63 @@ open — all for reasons outside app/test code, not failures.
 
 ---
 
+## Design v2 additions (v1.6, 2026-11-12)
+
+The frontend redesign (DESIGN_V2.md, sessions S1–S5) added the tests below.
+Everything else in this plan still stands; counts further down are the
+2026-07 baseline. Results are from the Pi on 2026-11-12
+(VERIFICATION_LOG.md Sessions 10–14).
+
+| Suite | Now | Result |
+|---|---|---|
+| Backend (`tests/`, default markers) | 103 pytest cases | **103 passed**, 6 deselected |
+| Frontend unit (`frontend/src/__tests__/`) | 13 files, 84 Vitest cases | **84 passed** |
+| E2E (`e2e/specs/`) | 14 specs, 30 test cases | **29 passed**; E2E-010 still fails for the same environment reason (no audio session) |
+| Lighthouse (`npm run lighthouse`) | landing page, mobile + desktop | **accessibility 100 / 100** |
+| Tunnel smoke (HW-005, opt-in, read-only) | updated for `/app` and the 14-sample library | **passed** |
+
+New IDs:
+
+- **DEPLOY-001..004** (`tests/test_deployment.py`, sandboxed, default run) —
+  `/app` and `/app/*` serve the SPA; API paths and static files are not
+  shadowed; no SPA route without a build; `/sw.js` is served `no-cache`.
+- **ART-001..004** (`tests/test_landing_art.py`) — the committed landing art
+  and sample details match `samples/` (SVGs byte-for-byte); thumbnails
+  present; size budget.
+- **FE-012** `Sidebar.test.jsx` — clip card and attribution, clip labels,
+  playhead readout, recent clips.
+- **FE-013** `PhoneScreens.test.jsx` — featured-sample order and fallback,
+  home actions, recording countdown / Stop / Cancel, result header, chips.
+- **FE-014** `AnalysisPanel.test.jsx` — seven lanes, `aria-pressed` toggles,
+  values and playhead position.
+- **FE-015** `Landing.test.jsx` — headings, deep links, sample count from
+  generated data, credits, FAQ closed by default with the agreed limits, no
+  bird language, labelled illustrations.
+- `route.test.js` — `isAppPath`, `wantsAutoRecord`, `appIntent`;
+  `useRecorder.test.js` — cancel, levels, context close;
+  `features.test.js` — loudness colour ramp; `Spectrogram.test.jsx` — Hz
+  tick thinning.
+- **E2E `routing.spec.mjs`** (6) — `/` → `/app`, `/app/*`, `?record=1`,
+  API paths under the service worker, PWA manifest.
+- **E2E `desktop-workspace.spec.mjs`** (3) — sidebar, lane toggles, narrow
+  fallback.
+- **E2E `phone-app.spec.mjs`** (3, Pixel 5) — home → sample → result → back;
+  upload + History; recording screen with a stand-in mic.
+- **E2E `landing.spec.mjs`** (7) — static page (no API, no app chunk), copy
+  rule, FAQ, sample deep links, bad `?sample=`, phone layout.
+
+Changed existing tests: every e2e spec opens `/app` instead of `/`;
+E2E-009 loads a sample first (the phone opens on a home screen with no 3D
+scene); the spectrogram playhead is found by test id; HW-005 no longer
+hardcodes 3 samples. E2E-004/005 descriptions below say "drawer" — these are
+now the History and Samples sheets.
+
+**Still manual / open:** HW-008 (iPhone) as before. Phone recording on
+Android (HW-007) was re-run by Job on 2026-11-12 against the new phone app
+and passed, including Cancel.
+
+---
+
 ## Implementation & Verification Status
 
 Everything below reflects what was **actually run** — the 2026-07-18 session
