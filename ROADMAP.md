@@ -303,8 +303,8 @@ feature schema — no `FEATURE_SCHEMA_VERSION` bump.
   production, security headers + CSP, `/api/health` = `{"ok": true,
   "status": "ok"}` (L9), no IP addresses in Echo's logs, data-cap warning,
   Privacy dialog. **Waiting on Job:** recording on Android Chrome and on an
-  iPhone; the uptime check; whether to allow Cloudflare Web Analytics in the
-  CSP (it is blocked today)
+  iPhone; the uptime check. Cloudflare Web Analytics is allowed in the CSP
+  (Job's call, 2026-11-13)
 
 Everything in `docs/LAUNCH.md` §5 that a session can check passes on the live
 site (`VERIFICATION_LOG.md` Session 16). Final state: pytest 181, Vitest 101,

@@ -52,7 +52,8 @@ def test_SEC_003_security_headers_on_every_kind_of_response(client_with_frontend
 
 
 def test_SEC_004_csp_allows_only_what_the_app_needs(isolated_backend):
-    """No inline scripts, no eval, no third-party origins; blob: only where
+    """No inline scripts, no eval, no third-party origins except Cloudflare
+    Web Analytics; blob: only where
     the recorder, the 3D text worker and canvas images need it; and the page
     can't be framed."""
     main, _db, _storage = isolated_backend
@@ -60,12 +61,17 @@ def test_SEC_004_csp_allows_only_what_the_app_needs(isolated_backend):
     assert policy["default-src"] == "'self'"
     # blob: is there for the 3D label worker's importScripts (see main.py);
     # verified in a real browser by the CSP end-to-end spec.
-    assert policy["script-src"] == "'self' blob:"
+    # The only third-party origins are Cloudflare Web Analytics' two (Job's
+    # call, 2026-11-13: the zone injects its beacon at the edge).
+    assert policy["script-src"] == "'self' blob: https://static.cloudflareinsights.com"
+    assert policy["connect-src"] == "'self' data: blob: https://cloudflareinsights.com"
     assert policy["object-src"] == "'none'"
     assert policy["frame-ancestors"] == "'none'"
     assert policy["base-uri"] == "'self'"
     assert "blob:" in policy["media-src"] and "blob:" in policy["worker-src"]
     whole = main.CONTENT_SECURITY_POLICY
     assert "unsafe-eval" not in whole
-    assert "http:" not in whole and "https:" not in whole and "*" not in whole
+    assert "http:" not in whole and "*" not in whole
+    assert sorted(w for w in whole.replace(";", " ").split() if w.startswith("https:")) == [
+        "https://cloudflareinsights.com", "https://static.cloudflareinsights.com"]
     assert "'unsafe-inline'" not in policy["script-src"]

@@ -1747,10 +1747,11 @@ step-1 checks (one upload, one 2 s Pi capture). The 14 samples were not touched
 
 ## Known limits and open points
 
-- **Cloudflare Web Analytics is blocked by the CSP.** The zone injects
-  `static.cloudflareinsights.com/beacon.min.js`; the browser refuses it and
-  logs one console error per page load. Nothing visible breaks. Job to decide:
-  allow it in the CSP or stop injecting it for this hostname.
+- **Cloudflare Web Analytics: found blocked, then allowed (Job's decision).**
+  The zone injects `static.cloudflareinsights.com/beacon.min.js`; the first
+  launch CSP refused it. The CSP now allows that origin in `script-src` and
+  `https://cloudflareinsights.com` in `connect-src`. Re-checked on the live
+  site after the change: see "Follow-up" below.
 - **`MemoryMax=1G` is inert** on this Pi (`cgroup_disable=memory`).
   `OOMScoreAdjust=500` and `CPUQuota=200%` are what's in force.
 - **Journald has no time limit** (size-capped at 1 GB). Echo no longer logs IP
@@ -1766,3 +1767,17 @@ step-1 checks (one upload, one 2 s Pi capture). The 14 samples were not touched
   it clears an hour later or on restart, and visitors through the tunnel are
   counted by their own address.
 
+
+## Follow-up (2026-11-13): Cloudflare Web Analytics allowed in the CSP
+
+Job's decision: keep the analytics. `script-src` gained
+`https://static.cloudflareinsights.com`, `connect-src` gained
+`https://cloudflareinsights.com`; SEC-004 pins those as the only third-party
+origins. Restarted with `sudo -n systemctl restart echo`.
+
+| Check | Result |
+|---|---|
+| Live response header | Both origins present in the policy |
+| Headless Chromium on `/` and `/app?sample=lion-roar` (public URL) | `beacon.min.js` loads (200); **no CSP violations, no console errors** |
+| The beacon's report to `cloudflareinsights.com` | **Not observed.** It is sent as the page unloads, which the test browser doesn't surface. Confirm by page views appearing again in the Cloudflare dashboard |
+| pytest / E2E-023 | Pass |

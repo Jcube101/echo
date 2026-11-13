@@ -188,7 +188,9 @@ Echo is public, with no logins. These hold in every later session:
   localhost; the unit's `--no-proxy-headers` is part of that.
 - **The CSP is tested in a real browser** (`e2e/specs/launch.spec.mjs`,
   E2E-023). Change `CONTENT_SECURITY_POLICY` only with that spec passing;
-  pytest alone can't see a policy that blanks the 3D view.
+  pytest alone can't see a policy that blanks the 3D view. Its only
+  third-party origins are Cloudflare Web Analytics' two (Job's call); don't
+  add others without asking.
 - **`echo.service` is sandboxed** (read-only home, writes only under
   `data/`). Anything Echo needs to write must live under `data/`. On this Pi
   `MemoryMax` is inert (`cgroup_disable=memory`); `OOMScoreAdjust=500` and

@@ -773,12 +773,20 @@ Cloudflare won't cache a response that sets a cookie, so `echo_vid` is set only
 on the app page and the clip routes, never on `/`, `/assets/*`, samples or
 `/api/health`.
 
-### Cloudflare injects its Web Analytics script, and the CSP blocks it (session 16)
+### Cloudflare injects its Web Analytics script; the CSP allows exactly that (session 16)
 The zone adds `static.cloudflareinsights.com/beacon.min.js` to HTML pages at the
-edge. Under the new CSP the browser refuses it (one console error per page
-load; nothing visible breaks, but Echo's page views stop being counted). Open
-decision for Job: allow it in the CSP, or turn the injection off for this
-hostname. See the follow-ups below.
+edge (it is not in Echo's build, so no local test ever sees it). The first
+launch CSP refused it: one console error per page load, and Echo's page views
+stopped being counted from the deploy until the fix about an hour later.
+**Job's decision (2026-11-13): keep the analytics.** The CSP now allows
+`https://static.cloudflareinsights.com` in `script-src` (the beacon script) and
+`https://cloudflareinsights.com` in `connect-src` (where the beacon posts page
+views). Why this is acceptable: it is Cloudflare's cookieless page-view
+counter, already running on the zone before the launch; it sets no cookie and
+doesn't touch `echo_vid` or any clip. These are the only two third-party
+origins in the policy (SEC-004 pins the list), so anything else Cloudflare or
+anyone else injects is still refused. If the injection is ever turned off in
+the dashboard, remove both origins.
 
 ### The test suite's first import touched the real database (session 16)
 `tests/test_schema.py` (SCHEMA-005) audits the real `data/`, which runs
@@ -815,7 +823,8 @@ the first time pytest runs, not at deploy.
   2. Sign in at `https://echo.job-joseph.com/me` and record with the Pi mic.
   3. Record on Android Chrome; record on an iPhone (never tried) and note the
      result here.
-  4. Decide the Cloudflare Web Analytics question (see the gotcha above).
+  4. ~~Decide the Cloudflare Web Analytics question.~~ **Decided 2026-11-13:
+     keep it; the CSP allows its two origins.**
   5. A free uptime check on `https://echo.job-joseph.com/api/health`.
   6. Optional: `MaxRetentionSec=14day` for journald (Echo no longer logs IP
      addresses, but the journal has no time limit); a Cloudflare rate-limiting

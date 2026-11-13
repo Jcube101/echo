@@ -59,14 +59,18 @@ app = FastAPI(title="Echo", description="General-purpose 3D sound visualizer",
 # Without it the labels throw and the whole 3D scene stays blank. A blob: URL
 # can only be minted by script already running on the page, so this opens far
 # less than 'unsafe-inline' or 'unsafe-eval' would.
+#
+# The one third-party allowance is Cloudflare Web Analytics (Job's call,
+# 2026-11-13): Cloudflare adds its beacon script to the pages at the edge, and
+# the beacon posts page views back. Exactly two origins, nothing broader.
 CONTENT_SECURITY_POLICY = "; ".join([
     "default-src 'self'",
-    "script-src 'self' blob:",
+    "script-src 'self' blob: https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "media-src 'self' blob:",
     "font-src 'self' data:",
-    "connect-src 'self' data: blob:",
+    "connect-src 'self' data: blob: https://cloudflareinsights.com",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     "object-src 'none'",
