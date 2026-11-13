@@ -121,6 +121,24 @@ export async function captureMic(duration, { timeoutMs } = {}) {
   return res.json()
 }
 
+// Cancel or stop the running Pi-mic capture (owner only). `action` is 'cancel'
+// (throw the recording away) or 'stop' (end it now, keep what was recorded).
+// Parameters in the URL and no body, like captureMic. Always safe to call:
+// the server ignores it when nothing is running or it was already asked.
+export async function endCapture(action = 'cancel') {
+  const res = await fetch(`/capture?action=${encodeURIComponent(action)}`, {
+    method: 'DELETE',
+    redirect: 'manual',
+  })
+  if (res.type === 'opaqueredirect' || [401, 403, 404].includes(res.status)) {
+    const err = new Error('Your Pi mic sign-in has expired.')
+    err.kind = 'signed_out'
+    throw err
+  }
+  if (!res.ok) throw await apiError(res)
+  return res.json()
+}
+
 export async function getHistory() {
   const res = await fetch('/history')
   if (!res.ok) throw await apiError(res)
@@ -137,6 +155,18 @@ export async function getClip(id) {
 export async function deleteClip(id) {
   const res = await fetch(`/history/${id}`, { method: 'DELETE' })
   if (!res.ok) throw await apiError(res)
+}
+
+// Delete several of this browser's clips in one go. Returns how many were
+// deleted; IDs that aren't this browser's are skipped by the server.
+export async function deleteClips(ids) {
+  const res = await fetch('/history/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+  if (!res.ok) throw await apiError(res)
+  return (await res.json()).deleted
 }
 
 // Curated sample library (permanent, separate from personal history).

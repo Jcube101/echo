@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   uploadAudio, captureMic, deleteClip, friendlyError, getHistory, getClip, getMe, getSamples, getSample,
-  isTryLater, CAPTURE_EXTRA_WAIT_S,
+  isTryLater, CAPTURE_EXTRA_WAIT_S, endCapture, deleteClips,
 } from '../lib/api.js'
 
 // FE-005 — api.js error parsing. This is what the user sees in the error
@@ -137,6 +137,31 @@ describe('api.js error parsing', () => {
     }
     mockFetch(404, { detail: 'Not Found' })
     expect((await captureMic(5).catch((e) => e)).kind).toBe('signed_out')
+  })
+
+  it('endCapture sends DELETE /capture with the action in the URL and no body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ active: true, action: 'stop' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await endCapture('stop')).toEqual({ active: true, action: 'stop' })
+    await endCapture()
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/capture?action=stop', '/capture?action=cancel'])
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init).toEqual({ method: 'DELETE', redirect: 'manual' })   // no body, no headers
+    }
+    mockFetch(404, { detail: 'Not Found' })
+    expect((await endCapture('cancel').catch((e) => e)).kind).toBe('signed_out')
+  })
+
+  it('deleteClips posts the ids and returns the server count', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ deleted: 2 }) })
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await deleteClips(['a', 'b', 'c'])).toBe(2)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/history/delete')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ ids: ['a', 'b', 'c'] })
+    mockFetch(422, { detail: 'too many' })
+    await expect(deleteClips(['a'])).rejects.toThrow('too many')
   })
 
   it('deleteClip sends DELETE /history/{id} and surfaces a refusal', async () => {

@@ -1,6 +1,6 @@
 # Echo — Public launch brief (Session 6)
 
-**Status:** 🚧 Built and live 2026-11-13; waiting on Job for the Access setup, the `/me` recording and the phone checks (results: `VERIFICATION_LOG.md` Session 16) · **Goal:** make `echo.job-joseph.com` safe to share with
+**Status:** ✅ Shipped 2026-11-13. Known gap: iOS Safari untested, no device (results: `VERIFICATION_LOG.md` Session 16) · **Goal:** make `echo.job-joseph.com` safe to share with
 friends and strangers, with no logins.
 **Order:** do this **before** the "Bring your own Pi mic" work (`docs/BYO_PI_MIC.md`).
 

@@ -5,7 +5,7 @@ import AnalysisPanel from './components/AnalysisPanel.jsx'
 import Controls, { HEADER_BTN } from './components/Controls.jsx'
 import Sidebar, { clipLabel } from './components/Sidebar.jsx'
 import {
-  PhoneHome, PhoneRecording, PhoneResultHeader, PlayheadChips,
+  PhoneHome, PhoneRecording, PhoneResultHeader, PiMicRecording, PlayheadChips,
 } from './components/PhoneScreens.jsx'
 import Wordmark from './components/Wordmark.jsx'
 import PlaybackBar from './components/PlaybackBar.jsx'
@@ -50,7 +50,7 @@ export default function App() {
     if (window.location.search) window.history.replaceState(null, '', window.location.pathname)
   }, [])
 
-  const busy = status === 'processing'
+  const working = status === 'processing'
 
   // The clip sidebar is a desktop feature (DESIGN_V2.md §4.3). Below this
   // width the stage keeps the floating attribution chip instead; the phone
@@ -159,6 +159,22 @@ export default function App() {
 
   // Upload, browser recording and Pi capture — one owner for every layout.
   const actions = useClipActions({ onStatus, onResult, autoRecord, justSignedIn: intent.owner })
+  // "Busy" disables the other controls: something is being analysed, or the
+  // Pi mic is recording (which has its own screen, not the overlay).
+  const busy = working || !!actions.piCapture
+
+  // Coming back to the app (phone unlocked, tab shown again): refresh the clip
+  // lists. A Pi-mic capture, or a clip made in another tab, may have landed
+  // while this page wasn't looking.
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') setHistoryKey((k) => k + 1) }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
 
   // Drag & drop anywhere over the scene.
   const onDrop = useCallback(async (e) => {
@@ -204,7 +220,7 @@ export default function App() {
     </div>
   )
 
-  const processingOverlay = busy && (
+  const processingOverlay = working && (
     <div className="absolute inset-0 z-20 grid place-items-center bg-night/70 backdrop-blur-sm">
       <div className="flex flex-col items-center gap-3">
         <div className="h-8 w-8 rounded-full border-2 border-night-line border-t-amber animate-spin" />
@@ -249,7 +265,9 @@ export default function App() {
     return (
       <div className="relative h-full w-full bg-night text-cream">
         <Toaster position="top-center" />
-        {recording ? (
+        {actions.piCapture ? (
+          <PiMicRecording actions={actions} onOpenHistory={() => setGalleryOpen(true)} />
+        ) : recording ? (
           <PhoneRecording recorder={actions.recorder} onOpenHistory={() => setGalleryOpen(true)} />
         ) : hasClip ? (
           <div className="flex h-full flex-col overflow-y-auto">

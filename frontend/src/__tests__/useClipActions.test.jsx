@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
-import { useClipActions } from '../lib/useClipActions.js'
+import { recoverCapture, useClipActions } from '../lib/useClipActions.js'
 import * as api from '../lib/api.js'
 
 vi.mock('sonner', () => {
@@ -12,7 +12,10 @@ vi.mock('sonner', () => {
 })
 vi.mock('../lib/api.js', async (orig) => {
   const real = await orig()
-  return { ...real, uploadAudio: vi.fn(), captureMic: vi.fn(), getMe: vi.fn() }
+  return {
+    ...real, uploadAudio: vi.fn(), captureMic: vi.fn(), getMe: vi.fn(),
+    endCapture: vi.fn(), getHistory: vi.fn(), getClip: vi.fn(),
+  }
 })
 
 // FE-015 — launch behaviour of the clip actions (docs/LAUNCH.md §2 and §3):
@@ -27,7 +30,7 @@ function setup(props = {}) {
 }
 
 describe('useClipActions', () => {
-  beforeEach(() => { localStorage.clear() })
+  beforeEach(() => { localStorage.clear(); api.getHistory.mockResolvedValue([]) })
   afterEach(() => { vi.clearAllMocks() })
 
   it('keeps the Pi mic off for an ordinary visitor, with no sign-in hint', async () => {
@@ -105,6 +108,136 @@ describe('useClipActions', () => {
     expect(onStatus).toHaveBeenLastCalledWith('idle')
     expect(onStatus).not.toHaveBeenCalledWith('error', expect.anything())
     expect(onResult).not.toHaveBeenCalled()
+  })
+
+  // --- cancel / stop (DELETE /capture) --------------------------------------
+  function deferred() {
+    let resolve, reject
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej })
+    return { promise, resolve, reject }
+  }
+
+  async function startCapture(props) {
+    api.getMe.mockResolvedValue({ pi_mic: true })
+    const pending = deferred()
+    api.captureMic.mockReturnValue(pending.promise)
+    const hook = setup(props)
+    await waitFor(() => expect(hook.result.current.piMic).toBe(true))
+    let run
+    await act(async () => { run = hook.result.current.runCapture(); await Promise.resolve() })
+    await waitFor(() => expect(hook.result.current.piCapture).not.toBeNull())
+    return { ...hook, pending, run }
+  }
+
+  it('shows a running Pi capture, and Cancel ends it quietly with nothing saved', async () => {
+    api.endCapture.mockResolvedValue({ active: true, action: 'cancel' })
+    const { result, pending, run, onResult, onStatus } = await startCapture()
+    expect(result.current.piCapture).toMatchObject({ seconds: 5, phase: 'recording', ending: null })
+    expect(api.captureMic).toHaveBeenCalledWith(5)
+
+    await act(() => result.current.cancelCapture())
+    expect(api.endCapture).toHaveBeenCalledWith('cancel')
+    expect(result.current.piCapture.ending).toBe('cancel')
+    await act(() => result.current.cancelCapture())          // a second press does nothing
+    expect(api.endCapture).toHaveBeenCalledTimes(1)
+
+    await act(async () => { pending.resolve({ cancelled: true, reason: 'cancelled' }); await run })
+    expect(result.current.piCapture).toBeNull()
+    expect(toast).toHaveBeenCalledWith('Recording cancelled', { description: 'Nothing was saved.' })
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(onResult).not.toHaveBeenCalled()
+    expect(onStatus).toHaveBeenLastCalledWith('idle')
+  })
+
+  it('Stop keeps what was recorded: the shorter clip comes back as a normal result', async () => {
+    api.endCapture.mockResolvedValue({ active: true, action: 'stop' })
+    const { result, pending, run, onResult } = await startCapture()
+    await act(() => result.current.stopCapture())
+    expect(api.endCapture).toHaveBeenCalledWith('stop')
+    expect(result.current.piCapture).toMatchObject({ ending: 'stop', phase: 'finishing' })
+    const clip = { id: 'c1', features: [], duration_s: 2.9, audio_url: '/audio/c1.opus' }
+    await act(async () => { pending.resolve(clip); await run })
+    expect(onResult).toHaveBeenCalledWith(clip, { kind: 'pi_mic' })
+    expect(toast.success).toHaveBeenCalledWith('Captured', { description: '3s from the Pi mic' })
+    expect(result.current.piCapture).toBeNull()
+  })
+
+  it('says so when a stop came too early to keep anything', async () => {
+    const { pending, run, onResult } = await startCapture()
+    await act(async () => { pending.resolve({ cancelled: true, reason: 'too_short' }); await run })
+    expect(toast).toHaveBeenCalledWith('Stopped too soon', expect.anything())
+    expect(onResult).not.toHaveBeenCalled()
+  })
+
+  it('re-enables Cancel if the cancel request itself fails', async () => {
+    api.endCapture.mockRejectedValue(new Error('Request failed (500)'))
+    const { result, pending, run } = await startCapture()
+    await act(() => result.current.cancelCapture())
+    expect(result.current.piCapture.ending).toBeNull()
+    expect(toast.error).toHaveBeenCalledWith("Couldn't cancel the Pi mic", expect.anything())
+    await act(async () => { pending.resolve({ cancelled: true, reason: 'cancelled' }); await run })
+  })
+
+  // --- the answer is lost (phone locked, app in the background) ---------------
+  it('finds the clip in History when the capture finished while the app was away', async () => {
+    const saved = { id: 'new1', source_type: 'pi_mic', features: [{ t: 0 }], duration_s: 5, audio_url: '/audio/new1.opus' }
+    api.getHistory
+      .mockResolvedValueOnce([{ id: 'old1', source_type: 'pi_mic' }])                    // before the capture
+      .mockResolvedValue([{ id: 'new1', source_type: 'pi_mic' }, { id: 'old1', source_type: 'pi_mic' }])
+    api.getClip.mockResolvedValue(saved)
+    const { result, pending, run, onResult, onStatus } = await startCapture({ recoverAfterMs: 0 })
+    await act(async () => {
+      pending.reject(Object.assign(new Error('Failed to fetch'), { kind: 'network' }))
+      await run
+    })
+    expect(api.getClip).toHaveBeenCalledWith('new1')
+    expect(onResult).toHaveBeenCalledWith(saved, { kind: 'pi_mic' })
+    expect(toast.success).toHaveBeenCalledWith('Captured', { description: 'The Pi finished this recording while the app was away.' })
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(onStatus).not.toHaveBeenCalledWith('error', expect.anything())
+    expect(result.current.piCapture).toBeNull()
+  })
+
+  it('does not go looking for a clip after a cancel whose answer was lost', async () => {
+    api.endCapture.mockResolvedValue({ active: true, action: 'cancel' })
+    const { result, pending, run, onResult } = await startCapture({ recoverAfterMs: 0 })
+    await act(() => result.current.cancelCapture())
+    api.getHistory.mockClear()
+    await act(async () => {
+      pending.reject(Object.assign(new Error('Failed to fetch'), { kind: 'network' }))
+      await run
+    })
+    expect(api.getHistory).not.toHaveBeenCalled()
+    expect(toast).toHaveBeenCalledWith('Recording cancelled', { description: 'Nothing was saved.' })
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(onResult).not.toHaveBeenCalled()
+  })
+
+  it('a capture that fails in its first moments is reported at once, with no search of History', async () => {
+    const { pending, run, onResult } = await startCapture()          // default: recover only after 3 s
+    api.getHistory.mockClear()
+    await act(async () => {
+      pending.reject(Object.assign(new Error('Failed to fetch'), { kind: 'network' }))
+      await run
+    })
+    expect(api.getHistory).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith("Couldn't reach Echo", expect.anything())
+    expect(onResult).not.toHaveBeenCalled()
+  })
+
+  it('recoverCapture ignores older and non-Pi clips, keeps trying while offline, and gives up at the deadline', async () => {
+    const before = new Set(['old1'])
+    api.getHistory.mockResolvedValue([{ id: 'old1', source_type: 'pi_mic' }, { id: 'up1', source_type: 'upload' }])
+    expect(await recoverCapture(before, Date.now() - 1)).toBeNull()                      // nothing new: gives up
+
+    api.getClip.mockResolvedValue({ id: 'new1' })
+    api.getHistory
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))                           // still offline
+      .mockResolvedValueOnce([{ id: 'old1', source_type: 'pi_mic' }])                    // not there yet
+      .mockResolvedValue([{ id: 'new1', source_type: 'pi_mic' }, { id: 'old1', source_type: 'pi_mic' }])
+    const looking = vi.fn()
+    expect(await recoverCapture(before, Date.now() + 5000, looking, 5)).toEqual({ id: 'new1' })
+    expect(looking).toHaveBeenCalledTimes(1)
   })
 
   it('still shows a real failure as an error', async () => {

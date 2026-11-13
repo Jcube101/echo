@@ -3,6 +3,7 @@ import { ChevronLeft, History, Loader2, Mic, Play, Square, Upload } from 'lucide
 import { Button } from '@/components/ui/button'
 import Wordmark from './Wordmark.jsx'
 import { HEADER_BTN, PiMicControl } from './Controls.jsx'
+import { usePiElapsed } from '../lib/useClipActions.js'
 import { getSamples } from '../lib/api.js'
 import { fmtClock, fmtSigned } from '../lib/format.js'
 import { thumbFor } from '../lib/sampleArt.js'
@@ -195,6 +196,93 @@ export function PhoneRecording({ recorder, onOpenHistory }) {
         </button>
         <p className="mt-2 text-center text-sm leading-relaxed text-muted-foreground">
           Echo stops by itself at one minute. The mic switches off as soon as you stop.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// Pi mic recording (phone): the same screen as browser recording, for the
+// same reason: you should always see that a mic is listening, and be able to
+// stop it. There are no live level bars because the sound is on the Pi, not
+// on this phone. Stop keeps what was recorded; Cancel throws it away.
+export function PiMicRecording({ actions, onOpenHistory }) {
+  const { piCapture, stopCapture, cancelCapture } = actions
+  const elapsed = usePiElapsed(piCapture)
+  const recording = piCapture.phase === 'recording'
+  const frac = recording ? Math.min(1, elapsed / piCapture.seconds) : 1
+
+  return (
+    <div className="flex h-full flex-col overflow-y-auto px-5 pb-6">
+      <header className="flex items-center justify-between py-3">
+        <Wordmark />
+        <HistoryButton onClick={onOpenHistory} />
+      </header>
+
+      <div className="mt-4 text-center">
+        <div className="font-mono text-[13px] uppercase tracking-[0.12em] text-amber">
+          {recording ? 'Listening' : 'Analysing'}
+        </div>
+        <h2 className="mt-2 font-display text-[30px] font-semibold leading-tight text-cream">
+          {recording ? 'Pi mic is listening' : 'Drawing its shape'}
+        </h2>
+      </div>
+
+      <div
+        className="relative mx-auto mt-8 h-[280px] w-[280px] shrink-0"
+        role="timer"
+        aria-label={recording ? `Pi mic is listening, ${fmtClock(elapsed)} of ${fmtClock(piCapture.seconds)}` : 'Analysing the recording'}
+      >
+        <svg viewBox="0 0 280 280" className="h-full w-full -rotate-90" aria-hidden>
+          <circle cx="140" cy="140" r={RING_R} fill="none" stroke="#2E3D33" strokeWidth="10" />
+          <circle
+            cx="140" cy="140" r={RING_R} fill="none" stroke="#E8B04B" strokeWidth="10" strokeLinecap="round"
+            strokeDasharray={RING_C} strokeDashoffset={RING_C * (1 - frac)}
+            style={{ transition: 'stroke-dashoffset 200ms linear' }}
+          />
+        </svg>
+        <div className="absolute inset-0 grid place-content-center text-center">
+          {recording ? (
+            <>
+              <div className="font-mono text-[56px] leading-none tabular-nums text-cream">{fmtClock(elapsed)}</div>
+              <div className="mt-3 text-[15px] text-muted-foreground">of {fmtClock(piCapture.seconds)}</div>
+            </>
+          ) : (
+            <Loader2 className="mx-auto h-12 w-12 animate-spin text-amber" aria-hidden />
+          )}
+        </div>
+      </div>
+
+      <p className="mx-auto mt-8 max-w-[320px] text-center text-[15px] leading-relaxed text-muted-foreground" aria-live="polite">
+        {recording
+          ? 'Recording on the Pi, not on this phone.'
+          : 'The recording is done. This takes a few seconds.'}
+      </p>
+
+      <div className="mt-auto pt-8">
+        {recording && (
+          <button
+            type="button"
+            onClick={stopCapture}
+            disabled={!!piCapture.ending}
+            title="Stop now and keep what was recorded"
+            className="flex h-16 w-full items-center justify-center gap-3 rounded-full bg-rust text-[17px] font-semibold text-white active:bg-rust/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber"
+          >
+            <Square className="h-4 w-4 fill-current" aria-hidden />
+            Stop and see its shape
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={cancelCapture}
+          disabled={piCapture.ending === 'cancel'}
+          className="mt-2 h-12 w-full rounded-full text-[17px] text-muted-foreground hover:text-cream disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {piCapture.ending === 'cancel' ? 'Cancelling…' : 'Cancel'}
+        </button>
+        <p className="mt-2 text-center text-sm leading-relaxed text-muted-foreground">
+          It stops by itself at {piCapture.seconds} seconds. If you lock the phone or leave the app,
+          the Pi still finishes and the clip appears in History.
         </p>
       </div>
     </div>

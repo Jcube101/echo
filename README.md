@@ -103,6 +103,8 @@ The API is then at `http://localhost:8014`. Key endpoints:
 | POST   | `/capture`              | Owner only: record on the Pi mic → same result   |
 | GET    | `/history`              | This browser's clips (id, timestamp, source, len)|
 | DELETE | `/history/{id}`         | Delete one of this browser's clips               |
+| POST   | `/history/delete`       | Delete several of this browser's clips           |
+| DELETE | `/capture`              | Owner only: cancel or stop the running recording |
 | GET    | `/history/{id}`         | Full feature JSON + playback audio URL           |
 | GET    | `/audio/{file}`         | Transcoded playback audio                         |
 | GET    | `/samples`              | List curated samples (attribution + metadata)    |

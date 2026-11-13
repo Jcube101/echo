@@ -28,8 +28,8 @@ open — all for reasons outside app/test code, not failures.
 
 ## Public launch additions (v1.7, 2026-11-13)
 
-Added with the launch work (`docs/LAUNCH.md`). Counts after it: **pytest 190
-passed** (was 105), **Vitest 109** (was 84), **Playwright 38** (was 31),
+Added with the launch work (`docs/LAUNCH.md`). Counts after it: **pytest 205
+passed** (was 105), **Vitest 130** (was 84), **Playwright 42** (was 31),
 Lighthouse accessibility 100. The older sections below are unchanged except
 where noted here.
 
@@ -42,6 +42,9 @@ where noted here.
 | SEC-001…004 | `tests/test_hardening.py` | API docs off unless `ECHO_DEV=1`; security headers on every kind of response; the CSP's contents |
 | WORK-001…006 | `tests/test_worker.py` | The analysis worker process (production's mode): runs in a separate long-lived process; same 422 across the boundary; an overrunning job is killed and the worker replaced with nothing left behind; a worker dying mid-job is a 500 and recovers; stops with the app; process mode is the default |
 | CAP-001…007 | `tests/test_capture.py` | Pi mic capture guards: duration from the URL with no body; rec limit = duration + 10 s; an overrunning rec is killed with everything it started; busy / not-found / empty failures each have a message and an `X-Echo-Error` reason; every `/capture` request leaves a timeline with no IP, visitor ID or token |
+| CAP-010…020 | `tests/test_capture_cancel.py` | Cancel / stop a running capture: cancel mid-recording frees the mic (a new capture straight after works), saves no clip and leaves no file; cancel with nothing running is a no-op; stop keeps the shorter clip; stop too early saves nothing; repeats are no-ops; stop/cancel after the recording finished; cancel before rec started; **both actions fired at 18 offsets around the end of a recording**; one capture at a time; owner-only; in the trace. Uses a stub "mic" that holds a kernel file lock and answers SIGINT like arecord |
+| BULK-001…004 | `tests/test_bulk_delete.py` | `POST /history/delete`: only the caller's clips go (two browsers), rows and both files, the count is right; unknown/repeated/empty lists; the 100-ID limit; a cookieless browser deletes nothing |
+| E2E-026…029 | `e2e/specs/launch.spec.mjs` | Multi-select delete across two browser contexts; selection mode (Select all by keyboard, Escape leaves it first, long press on touch but not mouse); Pi mic recording state with Stop and Cancel on desktop and phone (owner routes mocked), with no request bodies |
 | FE-015 + additions | `frontend/src/__tests__/` | `useClipActions.test.jsx` (Pi mic only for the owner, the "sign in again" hint, 503/429 as notices); Gallery delete (two presses) and the browser-only note; `api.test.js` (`getMe`, `deleteClip`, `captureMic` sign-out detection, no `credentials`); Landing FAQ copy and the Privacy dialog; phone home without the Pi mic |
 | E2E-020…025 | `e2e/specs/launch.spec.mjs` | Two browser contexts are isolated (list, open, play, delete; cookieless sees nothing); delete from the History sheet; no Pi mic and no owner route without the sign-in, `/docs` 404; security headers and **zero CSP violations with the 3D view on screen**; 503 and 429 as friendly notices; the Privacy dialog |
 
@@ -65,8 +68,10 @@ the phone-home and FAQ specs match the new UI.
 Job's `CF_Authorization` cookie value; without it the test asserts the 404 and
 skips. HW-001 and HW-006 delete the clip they create.
 
-**Cannot be automated:** a real Cloudflare-signed token (the `/me` sign-in),
-recording on Android Chrome, and recording on an iPhone. All three are Job's.
+**Cannot be automated:** a real Cloudflare-signed token (the `/me` sign-in and
+Pi mic capture: done by Job, phone and desktop), recording on Android Chrome
+(done by Job), and recording on an iPhone (**not done: no device; a known
+gap**).
 
 ---
 

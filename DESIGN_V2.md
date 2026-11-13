@@ -194,6 +194,24 @@ name, duration, provider, play icon) with "All 14 samples →", the same FAQ
     with mono values, plus Loudness %.
   - *Recent clips* — the latest three from `/history`, "All N" (at most 20, this browser's own) opens the History sheet.
 
+### 4.3a Added after launch (2026-11-13)
+
+- **Pi mic recording (owner only).** Same screen as browser recording (§4.6):
+  amber "LISTENING" label, heading "Pi mic is listening", the countdown ring
+  ("0:02 of 0:10"), a rust "Stop and see its shape" button and a text "Cancel".
+  No level bars (the sound is on the Pi); one line says "Recording on the Pi,
+  not on this phone." After the recording time the ring is full and it reads
+  "Analysing"; only Cancel remains. On desktop the header shows one row:
+  a tile "Pi mic is listening 0:02 / 0:05" with a progress bar, then Stop and
+  Cancel; Record and Upload are hidden while it runs so the header never wraps.
+- **History, selecting several.** "Select" in the sheet header (amber text
+  button, becomes "Done"); a long press on a row does the same on touch. Rows
+  become labels with real checkboxes (20px, amber accent, 44px row height);
+  ticked rows get the amber ring. Above the list: "Select all" (shows the mixed
+  state), "N selected", and "Delete N clips", which turns red and asks "Delete
+  N clips for good?" with "Keep" beside it. Escape leaves selection first. The
+  per-row bin stays in the normal list.
+
 ### 4.4 App — desktop, Spectral panel
 
 ![App, desktop, Spectral panel](docs/design-v2/04-app-desktop-spectral.png)

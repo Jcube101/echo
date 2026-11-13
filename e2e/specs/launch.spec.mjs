@@ -180,3 +180,193 @@ test('the footer Privacy dialog opens, says what is kept, and closes', async ({ 
   await expect(page.locator('#faq')).not.toContainText('50 clips')
   expect(errors).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// Multi-select delete and Pi mic cancel / stop.
+
+async function openHistory(page) {
+  await page.getByTitle('Browse past clips').click()
+  const sheet = page.getByRole('dialog', { name: /History/ })
+  await expect(sheet).toBeVisible()
+  return sheet
+}
+
+// E2E-026 — bulk delete only ever touches the caller's clips.
+test('multi-select delete removes this browser\'s clips and nobody else\'s', async ({ browser }) => {
+  test.setTimeout(90_000)   // four real uploads; fine alone, tight inside the full run
+  const ctxA = await browser.newContext()
+  const ctxB = await browser.newContext()
+  const pageA = await ctxA.newPage()
+  const pageB = await ctxB.newPage()
+  const errors = trackConsoleErrors(pageA)
+
+  await pageA.goto('/app')
+  for (const f of [TONE_WAV, LONG_TONE_WAV, TONE_WAV]) {
+    await pageA.locator('input[type="file"]').setInputFiles(f)
+    await expect(pageA.locator('[data-sonner-toast]').filter({ hasText: 'Uploaded' }).last()).toBeVisible({ timeout: 20_000 })
+    await pageA.waitForTimeout(300)
+  }
+  await pageB.goto('/app')
+  await uploadFileAndWait(pageB, TONE_WAV)
+  const idsA = (await (await ctxA.request.get('/history')).json()).map((r) => r.id)
+  const idsB = (await (await ctxB.request.get('/history')).json()).map((r) => r.id)
+  expect(idsA).toHaveLength(3)
+  expect(idsB).toHaveLength(1)
+
+  // B asks the server to delete A's clips: nothing happens, and it isn't told why.
+  const sneaky = await ctxB.request.post('/history/delete', { data: { ids: idsA } })
+  expect(sneaky.status()).toBe(200)
+  expect(await sneaky.json()).toEqual({ deleted: 0 })
+  expect((await (await ctxA.request.get('/history')).json()).map((r) => r.id)).toEqual(idsA)
+
+  // A selects two of its three clips in the sheet and deletes them.
+  const sheet = await openHistory(pageA)
+  await sheet.getByRole('button', { name: 'Select' }).click()
+  const boxes = sheet.getByTestId('history-select')
+  await expect(boxes).toHaveCount(3)
+  await expect(sheet.getByTestId('history-delete')).toHaveCount(0)     // single bins hidden while selecting
+  await boxes.nth(0).check()
+  await boxes.nth(2).check()
+  await expect(sheet.getByText('2 selected')).toBeVisible()
+  const del = sheet.getByTestId('history-delete-selected')
+  await del.click()
+  await expect(del).toHaveText('Delete 2 clips for good?')
+  expect(await (await ctxA.request.get('/history')).json()).toHaveLength(3)   // nothing yet
+  await del.click()
+  await expect(pageA.locator('[data-sonner-toast]').filter({ hasText: '2 clips deleted' })).toBeVisible()
+  await expect(sheet.getByTestId('history-item')).toHaveCount(1)
+  await expect(sheet.getByTestId('history-delete')).toHaveCount(1)     // back to the normal list
+
+  const leftA = (await (await ctxA.request.get('/history')).json()).map((r) => r.id)
+  expect(leftA).toEqual([idsA[1]])
+  for (const gone of [idsA[0], idsA[2]]) {
+    expect((await ctxA.request.get(`/history/${gone}`)).status()).toBe(404)
+    expect((await ctxA.request.get(`/audio/${gone}.opus`)).status()).toBe(404)
+  }
+  expect((await (await ctxB.request.get('/history')).json()).map((r) => r.id)).toEqual(idsB)
+  expect((await ctxB.request.get(`/audio/${idsB[0]}.opus`)).status()).toBe(200)
+  expect(errors).toEqual([])
+  await Promise.all([ctxA.close(), ctxB.close()])
+})
+
+// E2E-027 — selection mode: Select all, keyboard, Escape, long press.
+test('selection mode: select all, Escape leaves it first, long press on touch only', async ({ page }) => {
+  await page.goto('/app')
+  await uploadFileAndWait(page, TONE_WAV)
+  await page.locator('input[type="file"]').setInputFiles(LONG_TONE_WAV)
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Uploaded' }).last()).toBeVisible({ timeout: 20_000 })
+  const sheet = await openHistory(page)
+  await expect(sheet.getByTestId('history-item')).toHaveCount(2)
+
+  // A held mouse button is not a long press.
+  const first = sheet.getByTestId('history-item').first()
+  const box = await first.boundingBox()
+  await page.mouse.move(box.x + 20, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(800)
+  await expect(sheet.getByTestId('history-select')).toHaveCount(0)
+  await page.mouse.move(box.x + 400, box.y + 400)       // drag away so releasing doesn't open the clip
+  await page.mouse.up()
+
+  // A touch long press enters selection with that row ticked.
+  await first.dispatchEvent('pointerdown', { pointerType: 'touch', bubbles: true })
+  await expect(sheet.getByTestId('history-select')).toHaveCount(2, { timeout: 2000 })
+  await expect(sheet.getByTestId('history-select').first()).toBeChecked()
+  await expect(sheet.getByTestId('history-select').nth(1)).not.toBeChecked()
+
+  // Select all from the keyboard (a real checkbox: Space toggles it).
+  const all = sheet.getByTestId('history-select-all')
+  await all.focus()
+  await page.keyboard.press('Space')
+  await expect(sheet.getByText('2 selected')).toBeVisible()
+  await expect(sheet.getByTestId('history-delete-selected')).toHaveText('Delete 2 clips')
+
+  // Escape leaves selection and keeps the sheet; a second Escape closes it.
+  await page.keyboard.press('Escape')
+  await expect(sheet).toBeVisible()
+  await expect(sheet.getByTestId('history-select')).toHaveCount(0)
+  await expect(sheet.getByTestId('history-item')).toHaveCount(2)       // nothing was deleted
+  await page.keyboard.press('Escape')
+  await expect(sheet).toBeHidden()
+})
+
+// The Pi mic is owner-only, so these drive the app with the owner routes
+// mocked: /api/me says "owner", and /capture answers the way the server does
+// (the real behaviour is CAP-010… in pytest).
+async function asOwner(page, { onEnd }) {
+  const calls = []
+  let release
+  const ended = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/me', (route) => route.fulfill({ json: { pi_mic: true } }))
+  await page.route('**/capture?*', async (route) => {
+    const req = route.request()
+    calls.push({ method: req.method(), url: new URL(req.url()).search, body: req.postData() })
+    if (req.method() === 'DELETE') {
+      const action = new URL(req.url()).searchParams.get('action')
+      await route.fulfill({ json: { active: true, action } })
+      release(action)
+    } else {
+      const action = await ended               // the capture answers once it is ended
+      await route.fulfill({ json: await onEnd(action) })
+    }
+  })
+  return calls
+}
+
+// E2E-028 — desktop: Pi mic shows it is listening; Cancel saves nothing.
+test('Pi mic (owner): recording state with Stop and Cancel; Cancel ends it quietly', async ({ page }) => {
+  const errors = trackConsoleErrors(page)
+  const calls = await asOwner(page, { onEnd: async () => ({ cancelled: true, reason: 'cancelled' }) })
+  await page.goto('/app')
+  await page.getByTitle("Record from the Pi's USB mic").click()
+
+  const live = page.getByRole('group', { name: 'Pi mic recording' })
+  await expect(live.getByText('Pi mic is listening')).toBeVisible()
+  await expect(live.getByRole('timer')).toHaveAccessibleName(/^Pi mic is listening, 0:0\d of 0:05$/)
+  await expect(live.getByRole('button', { name: 'Stop' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Record', exact: true })).toHaveCount(0)   // one thing at a time
+  await expect(page.getByTitle('Upload an audio or video file')).toHaveCount(0)
+
+  await live.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Recording cancelled' })).toBeVisible()
+  await expect(live).toBeHidden()
+  await expect(page.getByTitle("Record from the Pi's USB mic")).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Record', exact: true })).toBeEnabled()
+  await expect(page.getByText(/clip [0-9a-f]+/)).toHaveCount(0)
+
+  // Parameters in the URL, no request bodies (the safe pattern behind Access).
+  expect(calls).toEqual([
+    { method: 'POST', url: '?duration=5', body: null },
+    { method: 'DELETE', url: '?action=cancel', body: null },
+  ])
+  expect(errors).toEqual([])
+})
+
+// E2E-029 — phone: the same recording screen; Stop keeps the shorter clip.
+test('Pi mic (owner, phone): listening screen; Stop keeps what was recorded', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 780 } })
+  const page = await ctx.newPage()
+  // A real clip to answer with, made by this same browser.
+  await page.goto('/app')
+  await page.locator('input[type="file"]').setInputFiles(TONE_WAV)
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Uploaded' })).toBeVisible({ timeout: 20_000 })
+  const [row] = await (await ctx.request.get('/history')).json()
+  const clip = await (await ctx.request.get(`/history/${row.id}`)).json()
+
+  const calls = await asOwner(page, { onEnd: async () => clip })
+  await page.goto('/app')
+  await page.getByTitle("Record from the Pi's USB mic").click()
+
+  await expect(page.getByRole('heading', { name: 'Pi mic is listening' })).toBeVisible()
+  await expect(page.getByRole('timer')).toHaveAccessibleName(/^Pi mic is listening, 0:0\d of 0:05$/)
+  await expect(page.getByText(/the Pi still finishes and the clip appears in History/)).toBeVisible()
+  await expect(page.getByText('Tap to record')).toHaveCount(0)        // the home screen is replaced
+  await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+
+  await page.getByRole('button', { name: /Stop and see its shape/ }).click()
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Captured' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Pi mic is listening' })).toHaveCount(0)
+  await expect(page.locator('canvas').first()).toBeVisible()          // the result screen, with the trail
+  expect(calls.map((c) => `${c.method} ${c.url} ${c.body}`)).toEqual(['POST ?duration=5 null', 'DELETE ?action=stop null'])
+  await ctx.close()
+})

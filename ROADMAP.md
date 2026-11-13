@@ -29,7 +29,7 @@ this Pi.
 | v1.x — Polish | 🚧 In progress (1 of 4 items started) |
 | v1.5 — Extended Spectral Analysis Panel | ✅ Shipped (2D panel; 3D cube deferred) |
 | v1.6 — Frontend Redesign (Design v2) | ✅ Shipped (2026-11-12) |
-| v1.7 — Public Launch | 🚧 In progress (built and live 2026-11-13; three checks waiting on Job) |
+| v1.7 — Public Launch | ✅ Shipped (2026-11-13). Known gap: iOS Safari untested |
 | v1.8 — Bring Your Own Pi Mic | 💡 Idea |
 | v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
@@ -120,7 +120,9 @@ candidates and keeping only the 4 that measurably closed it.
   benefits most — follow the stack's standard vite-plugin-pwa pattern).
   *Absorbed into v1.6 S1 and shipped there (2026-11-12)*
 - 📋 **Planned** — iOS Safari MediaRecorder hardening if testing surfaces
-  issues (untested on a real device — see `LEARNINGS.md` follow-ups)
+  issues (untested on a real device — see `LEARNINGS.md` follow-ups).
+  **Still untested as of 2026-11-13: no iPhone available. A known gap, carried
+  past the v1.7 launch**
 - 🚧 **In progress** — Visual tuning to better match the reference reel.
   Point glow + additive-blend teal styling shipped in the post-launch visual
   overhaul; trail time-fade and camera presets are still open
@@ -276,7 +278,7 @@ their font from a CDN, the one part of the app shell that isn't offline
 
 ---
 
-## v1.7 — Public Launch — 🚧 In progress
+## v1.7 — Public Launch — ✅ Shipped (2026-11-13)
 
 Full brief and Job's settled decisions (L1–L6): **`docs/LAUNCH.md`**. Make
 `echo.job-joseph.com` safe to share with friends and strangers, with no logins.
@@ -304,14 +306,26 @@ feature schema — no `FEATURE_SCHEMA_VERSION` bump.
 - ✅ **Shipped (live 2026-11-13)** — §4 Smaller checks: API docs off in
   production, security headers + CSP, `/api/health` = `{"ok": true,
   "status": "ok"}` (L9), no IP addresses in Echo's logs, data-cap warning,
-  Privacy dialog. **Waiting on Job:** recording on Android Chrome and on an
-  iPhone; the uptime check. Cloudflare Web Analytics is allowed in the CSP
-  (Job's call, 2026-11-13)
+  Privacy dialog. Cloudflare Web Analytics is allowed in the CSP (Job's call,
+  2026-11-13). Job confirmed browser recording on Android Chrome and set up
+  the uptime monitor on `/api/health` (reports OK)
+- ✅ **Shipped (live 2026-11-13)** — Added at Job's request after launch:
+  - **Cancel / stop a Pi mic recording.** `DELETE /capture?action=cancel|stop`
+    (same Access gate). Cancel kills the recording and saves nothing; Stop
+    keeps what was recorded. The app shows the same recording screen as
+    browser recording ("Pi mic is listening", countdown, Stop, Cancel). A
+    capture that finishes while the phone is locked is picked up from History
+  - **Multi-select delete in History.** Select (or long-press on touch),
+    checkboxes, Select all, "Delete N clips" with a confirm step;
+    `POST /history/delete`, owner-checked per ID
 
-Everything in `docs/LAUNCH.md` §5 that a session can check passes on the live
-site (`VERIFICATION_LOG.md` Session 16). Final state: pytest 181, Vitest 101,
-Playwright 38, Lighthouse accessibility 100. v1.7 turns ✅ when Job reports the
-`/me` recording, Android Chrome and the iPhone result.
+**Known gap: iOS Safari is untested** (no iPhone available). Browser recording,
+the PWA install and the Privacy dialog have never been run there. See
+`LEARNINGS.md`.
+
+Every item in `docs/LAUNCH.md` §5 passes on the live site, with the iPhone
+result recorded as "untested" (`VERIFICATION_LOG.md` Session 16). Final state:
+pytest 205, Vitest 130, Playwright 42, Lighthouse accessibility 100.
 
 ---
 
@@ -399,6 +413,12 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-11-13** — **v1.7 Public Launch shipped.** Added after launch at Job's
+  request: cancel / stop for Pi mic recordings, and multi-select delete in
+  History. Job confirmed browser recording on Android Chrome and set up the
+  uptime monitor. Known gap: iOS Safari untested (no device). The Pi mic hang's
+  cause was not reproduced (the old JSON-body request also works); the
+  URL-parameter form and the trace log stay.
 - **2026-11-13** — Pi mic capture hang found and fixed (the request body's end
   arrived minutes late; captures now send no body); rec kill guard, app abort
   timer and a `/capture` trace log added. Job confirmed Pi mic recording after

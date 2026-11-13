@@ -7,6 +7,7 @@ StaticFiles so all API routes take precedence.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -14,6 +15,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -380,6 +382,38 @@ REC_GRACE_S = 10
 ERROR_HEADER = "X-Echo-Error"   # machine-readable reason, for the app's message
 
 
+# --- The one running capture --------------------------------------------------
+# There is one mic, so at most one capture runs at a time and Echo keeps track
+# of it here. That is what lets DELETE /capture cancel or stop it, and what
+# turns a second request into an immediate "busy" instead of an ALSA error.
+#
+# A capture is a dict: proc (the rec process, once started), phase
+# ("recording" | "analysing"), intent (None | "cancel" | "stop": what the owner
+# asked for), and rec_done (set when rec has exited, however it ended).
+# Everything that reads or changes it holds _capture_lock.
+_capture_lock = threading.Lock()
+_capture: dict | None = None
+# The capture belonging to the request being served (run_in_threadpool carries
+# it into the worker thread). _capture can already be None by then: a cancel
+# hands the mic to the next capture straight away.
+_this_capture: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "echo_capture", default=None)
+MIN_STOPPED_S = 1.0            # a stopped recording shorter than this is dropped
+_WAV_BYTES_PER_S = 44100 * 2   # what ~/bin/rec writes: 44.1 kHz, 16-bit, mono
+CANCEL_WAIT_S = 3.0            # DELETE waits this long for the mic to be free
+
+
+def _signal_rec(cap: dict, sig: int) -> None:
+    """Signal rec's whole process group, if it is still running. Caller holds
+    the lock. A group that has already gone is fine."""
+    proc = cap.get("proc")
+    if proc is not None and proc.poll() is None:
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+
+
 def _run_rec(cmd: list[str], timeout_s: float) -> tuple[int, str]:
     """Run ~/bin/rec and return (exit code, stderr). Blocking.
 
@@ -387,9 +421,19 @@ def _run_rec(cmd: list[str], timeout_s: float) -> tuple[int, str]:
     group and, on timeout, the WHOLE group is killed. Killing only the script
     would leave arecord alive, still holding the mic and the output pipes.
     Raises subprocess.TimeoutExpired after the group is dead.
+
+    The process is registered with this request's capture, so a cancel or
+    stop can reach it. One that arrived before rec had started means rec is
+    never started at all.
     """
-    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True, start_new_session=True)
+    cap = _this_capture.get()
+    with _capture_lock:
+        if cap is not None and cap["intent"] is not None:
+            return -signal.SIGKILL, ""          # asked to end before it began
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, start_new_session=True)
+        if cap is not None:
+            cap["proc"] = proc
     try:
         _out, err = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
@@ -423,6 +467,11 @@ def _mic_error(stderr: str) -> HTTPException:
                          headers={ERROR_HEADER: code})
 
 
+def _cancelled(reason: str = "cancelled") -> dict:
+    """The answer to a capture the owner cancelled: not an error, and no clip."""
+    return {"cancelled": True, "reason": reason}
+
+
 @app.post("/capture", dependencies=[Depends(access.require_owner)])
 async def capture(request: Request,
                   duration: float | None = Query(default=None, gt=0, le=MAX_DURATION_S),
@@ -439,13 +488,30 @@ async def capture(request: Request,
     The mic is acquired only for the recording window (rec is synchronous and
     exits when done) and released immediately — no background listening. rec
     is killed if it runs more than REC_GRACE_S past the recording time.
+
+    One capture at a time. While it runs, `DELETE /capture` can cancel it
+    (this request then answers `{"cancelled": true}` and nothing is saved) or
+    stop it early (what was recorded so far is analysed and saved).
     """
+    global _capture
     secs = duration if duration is not None else (req.duration if req else 5.0)
     if not os.path.exists(REC_WRAPPER):
         capture_trace.note(request, "rec wrapper missing")
         raise HTTPException(status_code=503,
                             detail="Pi mic wrapper (~/bin/rec) not found.",
                             headers={ERROR_HEADER: "mic_not_found"})
+
+    cap = {"proc": None, "phase": "recording", "intent": None,
+           "rec_done": threading.Event()}
+    with _capture_lock:
+        if _capture is not None:
+            capture_trace.note(request, "refused: another capture is running")
+            raise HTTPException(
+                status_code=503,
+                detail="The Pi mic is busy: another recording is already running.",
+                headers={ERROR_HEADER: "mic_busy"})
+        _capture = cap
+    _this_capture.set(cap)
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="echo_cap_"))
     raw_path = tmp_dir / f"cap_{uuid.uuid4().hex[:8]}.wav"
@@ -464,21 +530,94 @@ async def capture(request: Request,
                 detail=(f"The Pi mic didn't finish a {int(secs)} s recording within "
                         f"{int(secs) + REC_GRACE_S} s, so it was stopped. Try again."),
                 headers={ERROR_HEADER: "mic_timeout"})
+        finally:
+            # rec is gone and the mic is free. From here a cancel has nothing
+            # left to kill; it only marks the clip to be thrown away.
+            with _capture_lock:
+                intent = cap["intent"]
+                cap["phase"] = "analysing"
+            cap["rec_done"].set()
+
         size = raw_path.stat().st_size if raw_path.exists() else 0
-        capture_trace.note(request, f"rec ended (exit {code}, {size} bytes)")
-        if code != 0 or size == 0:
+        capture_trace.note(request, f"rec ended (exit {code}, {size} bytes"
+                                    + (f", owner asked to {intent})" if intent else ")"))
+        if intent == "cancel":
+            return _cancelled()
+        if intent == "stop":
+            # Interrupted on purpose: arecord closes the file properly, so
+            # what it holds is a valid, shorter recording.
+            if size < 44 + MIN_STOPPED_S * _WAV_BYTES_PER_S:
+                capture_trace.note(request, "stopped too early to analyse")
+                return _cancelled("too_short")
+        elif code != 0 or size == 0:
             raise _mic_error(stderr)
+
         capture_trace.note(request, "analysis started")
         result = await _analyse(raw_path, source_type="pi_mic", owner_id=vid)
         capture_trace.note(request, "analysis finished")
+        with _capture_lock:
+            cancelled_late = cap["intent"] == "cancel"
+        if cancelled_late:
+            # Cancelled while it was being analysed: the clip exists, so remove it.
+            capture_trace.note(request, "cancelled during analysis: clip discarded")
+            await run_in_threadpool(discard_partial, result["id"])
+            return _cancelled()
     except ProcessingError as e:
         capture_trace.note(request, "analysis refused the recording")
         raise HTTPException(status_code=422, detail=str(e))
     finally:
+        cap["rec_done"].set()
+        with _capture_lock:
+            if _capture is cap:
+                _capture = None
         shutil.rmtree(tmp_dir, ignore_errors=True)
     return {"id": result["id"], "features": result["features"],
             "spectrogram": result.get("spectrogram"),
             "duration_s": result["duration_s"], "audio_url": result["audio_url"]}
+
+
+@app.delete("/capture", dependencies=[Depends(access.require_owner)])
+def capture_cancel(request: Request, action: str = Query(default="cancel",
+                                                         pattern="^(cancel|stop)$")):
+    """Cancel or stop the running Pi-mic capture. Owner only, same gate and
+    same path as the capture itself; the action is in the URL, no body.
+
+    cancel  kill the recording; the capture answers `{"cancelled": true}` and
+            no clip is saved. Works during the analysis too (the clip is
+            thrown away). Returns once the mic is free.
+    stop    end the recording now and keep what was recorded so far.
+
+    Always safe to call: with nothing running, after rec has already finished,
+    or a second time, it changes nothing. Answers `{"active", "action"}`:
+    whether a capture was running, and what this call did to it (null = nothing).
+    """
+    global _capture
+    with _capture_lock:
+        cap = _capture
+        if cap is None:
+            capture_trace.note(request, f"{action}: nothing is running")
+            return {"active": False, "action": None}
+        if cap["intent"] is not None:
+            capture_trace.note(request, f"{action}: already asked to {cap['intent']}")
+            return {"active": True, "action": None}
+        if action == "stop":
+            if cap["phase"] != "recording":
+                capture_trace.note(request, "stop: recording already finished")
+                return {"active": True, "action": None}
+            cap["intent"] = "stop"
+            _signal_rec(cap, signal.SIGINT)
+            capture_trace.note(request, "stop: recording interrupted")
+            return {"active": True, "action": "stop"}
+        cap["intent"] = "cancel"
+        was_recording = cap["phase"] == "recording"
+        _signal_rec(cap, signal.SIGKILL)
+        # The capture is over as far as the mic is concerned: let the next one in.
+        _capture = None
+    if was_recording:
+        cap["rec_done"].wait(CANCEL_WAIT_S)   # so "cancel, then record" never meets a busy mic
+    capture_trace.note(request, "cancel: " + ("recording killed" if was_recording
+                                              else "clip will be discarded after analysis"))
+    return {"active": True, "action": "cancel"}
 
 
 # --- GET /history -------------------------------------------------------------
@@ -524,6 +663,30 @@ def history_delete(clip_id: str, vid: str = Depends(_visitor_id)):
         delete_clip(session, _owned_clip(session, clip_id, vid))
         session.commit()
     return Response(status_code=204)
+
+
+# --- POST /history/delete -----------------------------------------------------
+class BulkDelete(BaseModel):
+    ids: list[str] = Field(max_length=100)
+
+
+@app.post("/history/delete")
+def history_delete_many(req: BulkDelete, vid: str = Depends(_visitor_id)):
+    """Delete several of this browser's clips at once (rows + both files).
+
+    IDs that don't exist or belong to another browser are skipped without
+    comment, exactly as a single delete would 404 them: the answer never says
+    which IDs were real. Returns how many were deleted.
+    """
+    deleted = 0
+    with SessionLocal() as session:
+        for clip_id in dict.fromkeys(req.ids):          # each ID once, in order
+            clip = session.get(Clip, clip_id)
+            if clip is not None and clip.owner_id == vid:
+                delete_clip(session, clip)
+                deleted += 1
+        session.commit()
+    return {"deleted": deleted}
 
 
 # --- GET /audio/{filename} ----------------------------------------------------

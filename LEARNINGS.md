@@ -795,7 +795,7 @@ columns during development, before the deploy. Harmless here (nullable columns
 the old code ignored), but worth knowing: a schema change reaches the real DB
 the first time pytest runs, not at deploy.
 
-### Pi mic capture hang: the request body's end arrived minutes late (session 16, 2026-11-13)
+### Pi mic capture hang: cause not reproduced (session 16, 2026-11-13)
 **Symptom.** After signing in at `/me`, "Pi mic · 10 s" spun for about five
 minutes and then failed with the generic "check your connection". Twice.
 
@@ -804,31 +804,42 @@ one at 13:23:33, a 60 s one at 13:38:41), so the mic, `~/bin/rec`, the sandbox
 and the analysis were all fine. The recordings *started* about five minutes
 after the button press, right when the browser gave up; cloudflared logged
 `/capture` as "Incoming request ended abruptly: context canceled" at that
-moment. A local test confirmed the mechanism on Echo's side: FastAPI reads the
-whole request body before the route runs, so if the end of the body arrives
-late, nothing happens until it does, and then Echo records and answers a
-client that has already left.
+moment. So the request did not reach Echo's route until then. A local test
+showed one way that can happen on Echo's side: FastAPI reads the whole request
+body before the route runs, so a body whose end arrives late delays everything,
+and Echo then records and answers a client that has already left.
 
-**What was different about `/capture`.** It was the app's only request with a
-body the server had to wait for on a path behind Cloudflare Access (JSON, 15
-bytes, over HTTP/3). `/upload` (multipart, not behind Access) always worked.
-The service worker doesn't touch POSTs.
+**The hypothesis, and why it did not hold up.** `/capture` was the app's only
+request with a body on a path behind Cloudflare Access (JSON, 15 bytes), so the
+working theory was "the end of that body was held upstream". The app was changed
+to send the duration in the URL with no body, and Job's retries then worked
+(phone 6.5 s; desktop Chrome over HTTP/3, 12.25 s at Echo). **But** Job then
+sent the old JSON-body form again from the same signed-in desktop browser
+(16:11:53 IST), and it also worked: the trace shows `content-length=14`, body
+complete at +0.00 s, rec started at +0.00 s, 200 at +2.90 s. So a JSON body by
+itself does not cause the stall.
 
-**Fix.** The app sends the duration in the URL with **no body**
-(`POST /capture?duration=10`); the server accepts that or the old JSON form.
-Job's two retries after the deploy both worked: phone, 5 s clip, answered in
-6.5 s; desktop Chrome over HTTP/3, 10 s clip, 12.25 s at Echo and 13.63 s in
-the browser. In the trace both arrive as `content-length=0` and start
-recording within 2 ms.
+**Honest status: the cause was not reproduced and is not known.** What is
+established: both failures were requests that reached Echo's route minutes
+late, not a fault in rec, the sandbox, the analysis slot or the worker. What is
+not: where the request was held (browser, Cloudflare's edge with Access, or
+cloudflared) and why. There was no trace log during the failures, so the
+headers those two requests arrived with were never seen. Both failures were in
+the first minutes after the Access application was created and `access.env`
+was filled in (service restarts at 13:09 and 13:25:58), which may or may not
+matter. It has not happened since: every capture in the trace starts within
+2 ms of arriving.
 
-**What is and isn't proven.** Proven: Echo was waiting for the request to
-complete, not stuck in rec, the sandbox, the analysis slot or the worker; and
-with no body the hang is gone. Not proven: *why* the end of that small JSON
-body was held between the browser and Echo (the browser, Cloudflare's edge
-with Access, or cloudflared). There was no trace log at the time, so the
-headers the old request arrived with were never seen. If it matters later, send
-the old form once from a signed-in browser console and read the trace:
-`fetch('/capture',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"duration":2}',redirect:'manual'})`.
+**What stays in place because of it.**
+- **Parameters in the URL, no request body, for anything behind Access**
+  (`POST /capture?duration=`, `DELETE /capture?action=`). It removes the one
+  mechanism known to delay a route, and costs nothing.
+- **The `/capture` trace log stays on.** If a stall happens again, the first
+  line shows when the request arrived and what it carried
+  (`content-length`, `transfer-encoding`, `expect`), and whether the body
+  completed. Read it with `journalctl -u echo -o cat | grep '^capture'`.
+- **The app gives up at recording time + 75 s** and then looks in History for
+  the clip, because in both failures the clip had in fact been saved.
 
 **Guards added so a hang can't be silent again.**
 - `rec` runs in its own process group and the whole group is killed at
@@ -848,6 +859,56 @@ the old form once from a signed-in browser console and read the trace:
 leaves no trace at all. Any route that can run long needs its own timeline.
 "Device or resource busy" during the investigation was Job's own 60 s
 recording holding the mic, not a fault.
+
+### Pi mic cancel / stop, and what an interrupted `rec` leaves behind (session 16)
+Checked before building "stop early, keep what's recorded": `~/bin/rec` run the
+way Echo runs it (own process group) and interrupted after 3 s of a 10 s take.
+**SIGINT:** arecord exits in about 0.1 s, rewrites the WAV header to the real
+length, and the file decodes cleanly (2.88 s); rec exits 1 with "Aborted by
+signal Interrupt". SIGTERM leaves a valid file too. SIGKILL leaves a file whose
+header still claims the full length, which is why Cancel (SIGKILL) discards the
+file and Stop (SIGINT) keeps it.
+
+- **A first attempt at this check was wrong, usefully.** Started as a shell
+  background job (`rec … &`), arecord *ignores* SIGINT: a non-interactive shell
+  starts background jobs with SIGINT ignored, and the child inherits that. It
+  kept recording and held the mic. Echo starts rec with `Popen`, not through a
+  shell job, so the signal is delivered. If rec is ever launched differently,
+  re-check this.
+- **One capture at a time is tracked by the server** (`_capture` in `main.py`),
+  not left to ALSA. A second request gets an immediate "busy"; DELETE finds the
+  process to signal; and a cancel hands the mic to the next capture straight
+  away, waiting (up to 3 s) until rec has really exited, so "cancel, then
+  record" never meets a busy mic.
+- **Races are settled by one lock and one rule:** the first cancel/stop wins,
+  every later one is a no-op, and a signal is only ever sent to a rec that is
+  still running. A cancel that arrives after rec has finished can't kill
+  anything, so it marks the clip to be discarded after the analysis. CAP-017
+  fires both actions at 18 offsets around the end of a recording.
+- **A locked phone or backgrounded app loses the answer, not the recording.**
+  The Pi finishes and saves regardless. The app remembers what History held
+  before the capture; if the answer is lost it looks for a new Pi-mic clip and
+  shows it, and it refreshes the clip lists whenever the page becomes visible.
+  It only does this when the capture had been running for 3 s or more: a
+  failure in the first moments means the request never left, and searching
+  History for 30 s would only delay saying so.
+
+### Multi-select delete in History (session 16)
+`POST /history/delete` takes `{"ids": […]}` (at most 100) and answers
+`{"deleted": n}`. Each ID is owner-checked; IDs that are someone else's,
+unknown or repeated are skipped without comment, so the answer never confirms
+that an ID exists. It takes a JSON body, unlike `/capture`: it is not behind
+Cloudflare Access, and a list of IDs doesn't belong in a URL. In the sheet,
+Escape leaves selection first and closes the sheet only on a second press;
+changing the selection withdraws a pending "delete for good?" confirm.
+
+### Known gap: iOS Safari is untested (2026-11-13)
+Nobody has run Echo on an iPhone. Browser recording there uses `audio/mp4`
+(the code handles the mime type, and ffmpeg decodes it), the PWA install path
+differs, and Safari's handling of the Secure cookie and of `<dialog>` has not
+been seen. Android Chrome is confirmed by Job: browser recording (Record,
+10 s), the Pi mic, and the installed PWA. Treat any iOS report as a first
+test, not a regression.
 
 ## Manual follow-ups for Job
 
@@ -874,12 +935,14 @@ recording holding the mic, not a fault.
      and team domain in `/home/jcube/.config/echo/access.env`; then
      `sudo -n systemctl restart echo`. Until then the Pi mic is off for
      everyone, you included.
-  2. Sign in at `https://echo.job-joseph.com/me` and record with the Pi mic.
-  3. Record on Android Chrome; record on an iPhone (never tried) and note the
-     result here.
+  2. ~~Sign in at `https://echo.job-joseph.com/me` and record with the Pi mic.~~
+     **Done: Job, 2026-11-13, phone and desktop.**
+  3. ~~Record on Android Chrome~~ **Done: Job, 2026-11-13 (Record button,
+     10 s).** iPhone: **not tested, no device available** (known gap above).
   4. ~~Decide the Cloudflare Web Analytics question.~~ **Decided 2026-11-13:
      keep it; the CSP allows its two origins.**
-  5. A free uptime check on `https://echo.job-joseph.com/api/health`.
+  5. ~~A free uptime check on `https://echo.job-joseph.com/api/health`.~~
+     **Done: Job set it up, 2026-11-13; it reports OK.**
   6. Optional: `MaxRetentionSec=14day` for journald (Echo no longer logs IP
      addresses, but the journal has no time limit); a Cloudflare rate-limiting
      rule on `/upload` as an outer guard; enabling the memory cgroup.

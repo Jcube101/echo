@@ -1823,3 +1823,43 @@ signing in at `/me`, it records": **Pass** (Job, phone and desktop).
 
 Not proven: why the end of the old JSON body was held upstream of Echo.
 
+## Follow-up (2026-11-13): hang cause re-checked; Pi mic cancel/stop; multi-select delete
+
+**Old-form capture, re-run by Job at 16:11:53 IST** (JSON body, duration 2,
+from the signed-in desktop console): `content-length=14`, body complete at
++0.00 s, rec started at +0.00 s, 200 at +2.90 s. The body arrived at once, so
+the JSON body alone was not the cause. **The cause of the two five-minute
+stalls was not reproduced.** LEARNINGS.md has been corrected to say so.
+
+**Confirmed by Job:** browser recording on Android Chrome (Record button,
+10 s); uptime monitor on `/api/health` set up and reporting OK.
+**Known gap:** iOS Safari untested (no device).
+
+**Before building Stop:** `~/bin/rec` interrupted after 3 s of a 10 s take, run
+the way Echo runs it. SIGINT: arecord exits in 0.11 s, none left running, file
+valid (header corrected, 2.88 s, decodes cleanly). So Stop is supported.
+
+| Check | Result |
+|---|---|
+| `pytest` | **205 passed** (new: CAP-010…020, BULK-001…004) |
+| Vitest | **130 passed** |
+| Playwright | **42 passed** (new: E2E-026…029) |
+| Lighthouse accessibility, live landing page | 100 mobile, 100 desktop |
+| Race test (CAP-017): stop/cancel at 18 offsets around the end of a recording | Both outcomes hit; server idle, no recorder left, rows = files, next capture never "busy". Passed 5 runs in a row |
+| Real mic, sandbox settings: cancel a 20 s take at 3 s | DELETE answered in 15 ms; capture answered `{"cancelled": true}` at 3.03 s; no arecord left; a new 2 s capture straight after: 200 in 2.86 s |
+| Real mic, sandbox settings: stop a 20 s take at 4 s | Kept a 4.0 s clip (201 frames), saved to History; rec exit 1 as expected |
+| Cancel / stop with nothing running | `{"active": false, "action": null}` both times |
+| Live, no token: `DELETE /capture` on the LAN | 404, and it is in the trace |
+| Live, public: `DELETE /capture` without an Access session | Cloudflare's sign-in redirect (302) |
+| Live, public: bulk delete across two cookies | B asking for A's two clips: `{"deleted": 0}`; A asking for its two plus B's one: `{"deleted": 2}`; B still has its clip; A's files gone from disk |
+| Screens checked by eye | Phone "Pi mic is listening"; desktop header (one row, no wrap after a fix); History selection with the confirm step |
+
+Found and fixed while building: a cancel arriving before rec had started was
+not reaching it (now rec is never started); a capture failing in its first
+moments would have searched History for 30 s before reporting (recovery now
+needs the capture to have run 3 s); the desktop header wrapped to two rows
+while the Pi mic recorded.
+
+**Not verifiable by a session:** Cancel and Stop through Cloudflare Access
+with Job's real sign-in. Checklist given to Job.
+

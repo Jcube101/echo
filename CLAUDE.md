@@ -180,6 +180,15 @@ Echo is public, with no logins. These hold in every later session:
   `ECHO_CF_TEAM_DOMAIN` are unset. Those two values live only in
   `/home/jcube/.config/echo/access.env` (outside the repo, `chmod 600`) —
   never in git, never printed in a report.
+- **One Pi mic capture at a time, tracked by the server** (`_capture` in
+  `main.py`, under `_capture_lock`). `DELETE /capture?action=cancel|stop`
+  must stay safe at any moment: a no-op when nothing runs or it was already
+  asked, never a signal to a process that has exited, never a stuck mic.
+  Cancel = SIGKILL the group and discard; Stop = SIGINT and keep the file
+  (arecord leaves a valid WAV on SIGINT). CAP-010…020 guard this.
+- **Behind Cloudflare Access, put parameters in the URL and send no request
+  body** (`/capture?duration=`, `/capture?action=`). See LEARNINGS.md "Pi mic
+  capture hang: cause not reproduced".
 - **`/capture` stays traceable and bounded.** The app sends it with no
   request body (`?duration=`); `rec` is killed, process group and all, at
   duration + 10 s; `capture_trace.py` logs each step with no IPs, visitor IDs

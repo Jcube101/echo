@@ -258,6 +258,36 @@ def rec_stub(tmp_path):
             # so a test can check the whole process group was killed.
             body = (f'#!/bin/sh\nsleep 600 &\necho $! > "{tmp_path}/hang_child.pid"\n'
                     'wait\n')
+        elif behavior == "mic":
+            # A stand-in for the real wrapper + arecord, close enough to test
+            # cancel and stop:
+            #   - it holds "the mic" (a kernel file lock) while it runs, and
+            #     reports "Device or resource busy" if someone else has it.
+            #     Like the real device, the lock is released when every
+            #     process in the group is gone, however they died;
+            #   - it records for $2 seconds, then writes a full clip;
+            #   - on SIGINT it writes a valid, shorter clip and exits 1, as
+            #     arecord does ("Aborted by signal Interrupt");
+            #   - REC_STUB_SHORT=tiny makes the interrupted clip too short.
+            short = tmp_path / "rec_stub_short.wav"
+            tiny = tmp_path / "rec_stub_tiny.wav"
+            write_wav(short, make_tone(duration=1.5, freq=330.0, sr=44100, amp=0.6), 44100)
+            write_wav(tiny, make_tone(duration=0.2, freq=330.0, sr=44100, amp=0.6), 44100)
+            body = f'''#!/bin/sh
+exec 9>"{tmp_path}/mic.lock"
+if ! flock -n 9; then
+  echo "arecord: main:850: audio open error: Device or resource busy" 1>&2
+  exit 1
+fi
+echo $$ > "{tmp_path}/mic.pid"
+if [ -f "{tmp_path}/mic.tiny" ]; then SHORT="{tiny}"; else SHORT="{short}"; fi
+trap 'cp "$SHORT" "$OUT"; echo "Aborted by signal Interrupt..." 1>&2; exit 1' INT
+OUT="$1"
+i=0
+while [ $i -lt $(( $2 * 20 )) ]; do sleep 0.05; i=$((i+1)); done
+cp "{fixture_wav}" "$1"
+exit 0
+'''
         else:
             raise ValueError(f"unknown rec_stub behavior: {behavior}")
         script.write_text(body)

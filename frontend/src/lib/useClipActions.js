@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useRecorder } from './useRecorder.js'
-import { uploadAudio, captureMic, friendlyError, getMe, isTryLater } from './api.js'
+import {
+  uploadAudio, captureMic, endCapture, friendlyError, getClip, getHistory, getMe, isTryLater,
+} from './api.js'
 
 // Remembers (in this browser only) that the owner has used the Pi mic here, so
 // the "sign in again" hint is shown to them and never to ordinary visitors.
@@ -32,6 +34,40 @@ export function captureFailure(err, fallback) {
   }
 }
 
+// After a capture's answer is lost, how long past the recording time to keep
+// looking for its clip (the Pi still has to analyse it), and how often.
+const CAPTURE_RECOVERY_S = 25
+const CAPTURE_RECOVER_AFTER_MS = 3000
+const RECOVERY_POLL_MS = 2000
+
+// Look in History for a Pi-mic clip that wasn't there before the capture
+// started; load it when it appears. Null if none shows up by `untilMs`.
+export async function recoverCapture(before, untilMs, onLooking, pollMs = RECOVERY_POLL_MS) {
+  onLooking?.()
+  for (;;) {
+    try {
+      const fresh = (await getHistory()).find((r) => r.source_type === 'pi_mic' && !before.has(r.id))
+      if (fresh) return await getClip(fresh.id)
+    } catch { /* still offline: keep trying until the deadline */ }
+    if (Date.now() >= untilMs) return null
+    await new Promise((resolve) => setTimeout(resolve, pollMs))
+  }
+}
+
+// Seconds since a Pi-mic capture started, ticking while it records. Reads the
+// clock rather than counting ticks, so it is right again after the phone was
+// locked or the app was in the background.
+export function usePiElapsed(capture) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    if (!capture) return undefined
+    const id = setInterval(() => tick((n) => n + 1), 200)
+    return () => clearInterval(id)
+  }, [capture])
+  if (!capture) return 0
+  return Math.min(capture.seconds, Math.max(0, (Date.now() - capture.startedAt) / 1000))
+}
+
 function signInAgainToast() {
   toast('Pi mic sign-in expired', {
     description: 'Sign in again at /me to use the Pi mic.',
@@ -48,7 +84,10 @@ function signInAgainToast() {
 // 'pi_mic', which the clip card uses to say where the clip came from. A toast
 // is raised on every success/failure so nothing fails silently or vaguely
 // (recall the historical "Failed to fetch" issue).
-export function useClipActions({ onStatus, onResult, autoRecord = false, justSignedIn = false }) {
+export function useClipActions({
+  onStatus, onResult, autoRecord = false, justSignedIn = false,
+  recoverAfterMs = CAPTURE_RECOVER_AFTER_MS,
+}) {
   const fileRef = useRef(null)
   const [captureSecs, setCaptureSecs] = useState('5')
   const [inFlight, setInFlight] = useState(null) // 'upload' | 'capture' | null
@@ -129,17 +168,68 @@ export function useClipActions({ onStatus, onResult, autoRecord = false, justSig
     e.target.value = '' // allow re-picking the same file
   }
 
+  // --- Pi mic capture ---------------------------------------------------------
+  // `piCapture` is set while a capture is running: { seconds, startedAt,
+  // phase: 'recording' | 'finishing', ending: null | 'cancel' | 'stop' }.
+  // The screens draw their countdown from it (see usePiElapsed).
+  const [piCapture, setPiCapture] = useState(null)
+  const piRef = useRef(null)
+  function updatePi(next) {
+    piRef.current = typeof next === 'function' ? next(piRef.current) : next
+    setPiCapture(piRef.current)
+  }
+
   async function runCapture() {
+    if (piRef.current) return
+    const secs = Number(captureSecs)
+    // What History holds now, so a capture that finishes while the app can't
+    // hear the answer (phone locked, app in the background) can be found again.
+    let before = null
+    try { before = new Set((await getHistory()).map((r) => r.id)) } catch { /* recovery just won't run */ }
+
+    const startedAt = Date.now()
+    updatePi({ seconds: secs, startedAt, phase: 'recording', ending: null })
     setInFlight('capture')
-    onStatus('processing', `Recording ${captureSecs}s on the Pi mic…`)
+    onStatus('idle')
+    const toFinishing = setTimeout(
+      () => updatePi((c) => (c && c.phase === 'recording' ? { ...c, phase: 'finishing' } : c)),
+      secs * 1000)
     try {
-      const res = await captureMic(Number(captureSecs))
-      onResult(res, { kind: 'pi_mic' })
+      const res = await captureMic(secs)
+      if (res?.cancelled) {
+        if (res.reason === 'too_short') {
+          toast('Stopped too soon', { description: 'Less than a second was recorded, so nothing was saved.' })
+        } else {
+          toast('Recording cancelled', { description: 'Nothing was saved.' })
+        }
+      } else {
+        onResult(res, { kind: 'pi_mic' })
+        toast.success('Captured', { description: `${Math.round(res.duration_s ?? secs)}s from the Pi mic` })
+      }
       onStatus('idle')
-      toast.success('Captured', { description: `${captureSecs}s from the Pi mic` })
     } catch (e) {
       const msg = friendlyError(e)
-      if (e?.kind === 'signed_out' || e?.signedOut) {
+      const cancelled = piRef.current?.ending === 'cancel'
+      // The Pi finishes a capture whether or not this device is still
+      // listening. If the answer was lost, look for the new clip in History
+      // before calling it a failure.
+      const lostAnswer = e?.kind === 'network' || e?.kind === 'timed_out'
+      // …but only if the capture had been running a while. A failure in the
+      // first moments means the request never left (offline when pressed),
+      // and searching History would just delay saying so.
+      const hadStarted = Date.now() - startedAt >= recoverAfterMs
+      const recovered = lostAnswer && hadStarted && !cancelled && before
+        ? await recoverCapture(before, startedAt + (secs + CAPTURE_RECOVERY_S) * 1000,
+            () => updatePi((c) => (c ? { ...c, phase: 'finishing' } : c)))
+        : null
+      if (recovered) {
+        onResult(recovered, { kind: 'pi_mic' })
+        onStatus('idle')
+        toast.success('Captured', { description: 'The Pi finished this recording while the app was away.' })
+      } else if (cancelled && lostAnswer) {
+        onStatus('idle')
+        toast('Recording cancelled', { description: 'Nothing was saved.' })
+      } else if (e?.kind === 'signed_out' || e?.signedOut) {
         setPiMic(false)
         onStatus('idle')
         signInAgainToast()
@@ -153,14 +243,38 @@ export function useClipActions({ onStatus, onResult, autoRecord = false, justSig
         toast.error(title, { description })
       }
     } finally {
+      clearTimeout(toFinishing)
+      updatePi(null)
       setInFlight(null)
     }
   }
+
+  // Cancel (throw away) or stop (keep what was recorded) the running capture.
+  // The answer to the capture request itself then ends runCapture above.
+  async function endPiCapture(action) {
+    const cur = piRef.current
+    if (!cur || cur.ending) return
+    updatePi({ ...cur, ending: action, phase: action === 'stop' ? 'finishing' : cur.phase })
+    try {
+      await endCapture(action)
+    } catch (e) {
+      updatePi((c) => (c ? { ...c, ending: null } : c))
+      if (e?.kind === 'signed_out') {
+        signInAgainToast()
+      } else {
+        toast.error(action === 'stop' ? "Couldn't stop the Pi mic" : "Couldn't cancel the Pi mic",
+          { description: friendlyError(e) })
+      }
+    }
+  }
+  const cancelCapture = () => endPiCapture('cancel')
+  const stopCapture = () => endPiCapture('stop')
 
   return {
     recorder, startRecording,
     fileRef, pickFile, onPick,
     runCapture, captureSecs, setCaptureSecs, piMic,
+    piCapture, cancelCapture, stopCapture,
     inFlight,
   }
 }

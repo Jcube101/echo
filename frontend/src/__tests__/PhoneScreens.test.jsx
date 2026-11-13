@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  PhoneHome, PhoneRecording, PhoneResultHeader, PlayheadChips, featuredSamples,
+  PhoneHome, PhoneRecording, PhoneResultHeader, PiMicRecording, PlayheadChips, featuredSamples,
 } from '../components/PhoneScreens.jsx'
 import * as api from '../lib/api.js'
 
@@ -34,6 +34,38 @@ describe('featuredSamples', () => {
     const without = library.filter((s) => s.id !== 'wolf-howl')
     expect(featuredSamples(without).map((s) => s.id)).toEqual(['asian-koel', 'common-myna', 'lion-roar', 'rose-ringed-parakeet'])
     expect(featuredSamples([])).toEqual([])
+  })
+})
+
+describe('PiMicRecording', () => {
+  const capture = (over = {}) => ({ seconds: 10, startedAt: Date.now() - 3000, phase: 'recording', ending: null, ...over })
+
+  it('shows that the Pi mic is listening, with a countdown, Stop and Cancel', () => {
+    const actions = makeActions({ piCapture: capture(), stopCapture: vi.fn(), cancelCapture: vi.fn() })
+    render(<PiMicRecording actions={actions} onOpenHistory={vi.fn()} />)
+    expect(screen.getByRole('heading', { name: 'Pi mic is listening' })).toBeInTheDocument()
+    expect(screen.getByRole('timer')).toHaveAccessibleName(/^Pi mic is listening, 0:0[34] of 0:10$/)
+    expect(screen.getByText('of 0:10')).toBeInTheDocument()
+    expect(screen.getByText(/the Pi still finishes and the clip appears in History/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Stop and see its shape/ }))
+    expect(actions.stopCapture).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(actions.cancelCapture).toHaveBeenCalledTimes(1)
+  })
+
+  it('once the recording is done, offers Cancel only and says it is analysing', () => {
+    const actions = makeActions({ piCapture: capture({ phase: 'finishing' }), stopCapture: vi.fn(), cancelCapture: vi.fn() })
+    render(<PiMicRecording actions={actions} onOpenHistory={vi.fn()} />)
+    expect(screen.getByRole('timer')).toHaveAccessibleName('Analysing the recording')
+    expect(screen.queryByRole('button', { name: /Stop/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  })
+
+  it('disables both buttons once an ending was asked for', () => {
+    const actions = makeActions({ piCapture: capture({ ending: 'cancel' }), stopCapture: vi.fn(), cancelCapture: vi.fn() })
+    render(<PiMicRecording actions={actions} onOpenHistory={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /Stop and see its shape/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancelling…' })).toBeDisabled()
   })
 })
 
