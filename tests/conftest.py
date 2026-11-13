@@ -249,6 +249,15 @@ def rec_stub(tmp_path):
             body = '#!/bin/sh\necho "simulated mic failure: audio open error" 1>&2\nexit 1\n'
         elif behavior == "empty":
             body = '#!/bin/sh\n: > "$1"\nexit 0\n'
+        elif behavior == "busy":
+            body = ('#!/bin/sh\necho "arecord: main:850: audio open error: '
+                    'Device or resource busy" 1>&2\nexit 1\n')
+        elif behavior == "hang":
+            # Like the real wrapper: a shell script whose CHILD does the work
+            # and never finishes. The child's PID is written next to the script
+            # so a test can check the whole process group was killed.
+            body = (f'#!/bin/sh\nsleep 600 &\necho $! > "{tmp_path}/hang_child.pid"\n'
+                    'wait\n')
         else:
             raise ValueError(f"unknown rec_stub behavior: {behavior}")
         script.write_text(body)

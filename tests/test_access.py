@@ -29,7 +29,7 @@ def no_mic(monkeypatch):
     """Fail the test if anything gets as far as the rec wrapper."""
     def boom(*a, **k):
         raise AssertionError("the rec wrapper must not run without a valid token")
-    monkeypatch.setattr(main_module.subprocess, "run", boom)
+    monkeypatch.setattr(main_module, "_run_rec", boom)
 
 
 @pytest.mark.parametrize("method,path", GATED)

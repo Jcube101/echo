@@ -795,6 +795,60 @@ columns during development, before the deploy. Harmless here (nullable columns
 the old code ignored), but worth knowing: a schema change reaches the real DB
 the first time pytest runs, not at deploy.
 
+### Pi mic capture hang: the request body's end arrived minutes late (session 16, 2026-11-13)
+**Symptom.** After signing in at `/me`, "Pi mic · 10 s" spun for about five
+minutes and then failed with the generic "check your connection". Twice.
+
+**What the evidence showed.** Echo had recorded and saved both clips (a 10 s
+one at 13:23:33, a 60 s one at 13:38:41), so the mic, `~/bin/rec`, the sandbox
+and the analysis were all fine. The recordings *started* about five minutes
+after the button press, right when the browser gave up; cloudflared logged
+`/capture` as "Incoming request ended abruptly: context canceled" at that
+moment. A local test confirmed the mechanism on Echo's side: FastAPI reads the
+whole request body before the route runs, so if the end of the body arrives
+late, nothing happens until it does, and then Echo records and answers a
+client that has already left.
+
+**What was different about `/capture`.** It was the app's only request with a
+body the server had to wait for on a path behind Cloudflare Access (JSON, 15
+bytes, over HTTP/3). `/upload` (multipart, not behind Access) always worked.
+The service worker doesn't touch POSTs.
+
+**Fix.** The app sends the duration in the URL with **no body**
+(`POST /capture?duration=10`); the server accepts that or the old JSON form.
+Job's two retries after the deploy both worked: phone, 5 s clip, answered in
+6.5 s; desktop Chrome over HTTP/3, 10 s clip, 12.25 s at Echo and 13.63 s in
+the browser. In the trace both arrive as `content-length=0` and start
+recording within 2 ms.
+
+**What is and isn't proven.** Proven: Echo was waiting for the request to
+complete, not stuck in rec, the sandbox, the analysis slot or the worker; and
+with no body the hang is gone. Not proven: *why* the end of that small JSON
+body was held between the browser and Echo (the browser, Cloudflare's edge
+with Access, or cloudflared). There was no trace log at the time, so the
+headers the old request arrived with were never seen. If it matters later, send
+the old form once from a signed-in browser console and read the trace:
+`fetch('/capture',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"duration":2}',redirect:'manual'})`.
+
+**Guards added so a hang can't be silent again.**
+- `rec` runs in its own process group and the whole group is killed at
+  recording time + 10 s (`REC_GRACE_S`). The old `subprocess.run(timeout=…)`
+  killed only the wrapper script; `arecord` would have survived, holding the
+  mic and the output pipes, and `run()` would have blocked on those pipes.
+- Mic failures carry a reason in `X-Echo-Error` (`mic_busy`, `mic_not_found`,
+  `mic_timeout`, `mic_failed`) and a plain message.
+- The app aborts at recording time + 75 s and says what happened; on its own
+  timeout it adds that the clip may still have been saved.
+- `capture_trace.py` logs a timeline for every `/capture` request (and nothing
+  else): headers received, body complete, rec start/end, analysis, response
+  sent, client disconnected. No IPs, visitor IDs or token values.
+  Read it with `journalctl -u echo -o cat | grep '^capture'`.
+
+**Lesson.** With the access log off, a request that never reaches the route
+leaves no trace at all. Any route that can run long needs its own timeline.
+"Device or resource busy" during the investigation was Job's own 60 s
+recording holding the mic, not a fault.
+
 ## Manual follow-ups for Job
 
 - **Browser-recording from a real phone (Phase 4):** the `MediaRecorder` flow

@@ -11,6 +11,27 @@ const flag = {
   set: () => { try { localStorage.setItem(OWNER_FLAG, '1') } catch { /* private mode */ } },
 }
 
+// A failed Pi-mic capture, as [toast title, message]. Never the generic
+// "check your connection" unless the request truly got no answer.
+export function captureFailure(err, fallback) {
+  switch (err?.kind) {
+    case 'timed_out':
+      return ['Pi mic timed out', `${err.message} The recording may still have been saved: check History.`]
+    case 'mic_timeout':
+      return ['Pi mic timed out', err.message]
+    case 'mic_busy':
+      return ['Pi mic is busy', err.message]
+    case 'mic_not_found':
+      return ['Pi mic not found', err.message]
+    case 'mic_failed':
+      return ['Pi mic recording failed', err.message]
+    case 'network':
+      return ["Couldn't reach Echo", 'The capture request got no answer. Check that this device is online, then try again.']
+    default:
+      return ['Capture failed', fallback]
+  }
+}
+
 function signInAgainToast() {
   toast('Pi mic sign-in expired', {
     description: 'Sign in again at /me to use the Pi mic.',
@@ -118,16 +139,18 @@ export function useClipActions({ onStatus, onResult, autoRecord = false, justSig
       toast.success('Captured', { description: `${captureSecs}s from the Pi mic` })
     } catch (e) {
       const msg = friendlyError(e)
-      if (e?.signedOut) {
+      if (e?.kind === 'signed_out' || e?.signedOut) {
         setPiMic(false)
         onStatus('idle')
         signInAgainToast()
-      } else if (isTryLater(e)) {
+      } else if (isTryLater(e) && !e?.kind) {
         onStatus('idle')
         toast('Echo is busy', { description: msg })
       } else {
-        onStatus('error', msg)
-        toast.error('Capture failed', { description: msg })
+        // Say what actually happened (see captureMic for the kinds).
+        const [title, description] = captureFailure(e, msg)
+        onStatus('error', description)
+        toast.error(title, { description })
       }
     } finally {
       setInFlight(null)

@@ -1781,3 +1781,45 @@ origins. Restarted with `sudo -n systemctl restart echo`.
 | Headless Chromium on `/` and `/app?sample=lion-roar` (public URL) | `beacon.min.js` loads (200); **no CSP violations, no console errors** |
 | The beacon's report to `cloudflareinsights.com` | **Not observed.** It is sent as the page unloads, which the test browser doesn't surface. Confirm by page views appearing again in the Cloudflare dashboard |
 | pytest / E2E-023 | Pass |
+
+## Follow-up (2026-11-13): Pi mic capture hang
+
+Job signed in at `/me` (Access set up, `access.env` filled in); the Pi mic
+button showed, but a capture spun for about five minutes and failed. Cause and
+fix: LEARNINGS.md "Pi mic capture hang".
+
+**Investigation (nothing changed until the cause was narrowed down)**
+
+| Check | Finding |
+|---|---|
+| `journalctl -u echo` at the time | Nothing: the access log is off. This is why the trace was added |
+| cloudflared log | `/capture` "Incoming request ended abruptly: context canceled" at 13:37:30 |
+| Database | Both of Job's clips were recorded and saved (13:23:33, 13:38:41) |
+| Sound card | USB mic is card 0; `~/.asoundrc` points at card 0. No shift |
+| `rec` under the hardened unit | A copy of the code under the same sandbox settings captured 10 s in 12.5 s |
+| Analysis slot / worker | Not involved: same test passed through both; their waits are capped at 20 s and 60 s |
+| Tunnel and slow responses | A 60 s clip uploaded through the public URL: first byte at 14.4 s, 647 KB, fine |
+| Withheld request body (local) | Echo doesn't start recording until the body completes; then records at once |
+
+**Deployed:** no-body capture request, the rec kill guard, the app's abort
+timer and specific messages, and the `/capture` trace log.
+
+**Job's retries after the deploy (from the trace)**
+
+| Device | Request arrived | rec | Analysis | Response sent | Browser total |
+|---|---|---|---|---|---|
+| Phone, 5 s | 15:40:54.01, `content-length=0` | +0.00 → +5.04 s | +5.04 → +6.46 s | +6.48 s, 200 | (worked) |
+| Desktop Chrome, 10 s, HTTP/3 | 15:42:37.31, `content-length=0` | +0.00 → +10.04 s | +10.04 → +12.22 s | +12.25 s, 200 | 13.63 s (0.45 s connection setup, 13.39 s waiting) |
+
+No cloudflared errors since the deploy. This also closes the §5 item "after
+signing in at `/me`, it records": **Pass** (Job, phone and desktop).
+
+| Tests | Result |
+|---|---|
+| `pytest` | **190 passed** (new: CAP-001…007 in `tests/test_capture.py`) |
+| Vitest | **109 passed** |
+| Playwright | **38 passed** |
+| Real 2 s capture through the new path, sandbox settings | 200 in 2.8 s, full timeline logged |
+
+Not proven: why the end of the old JSON body was held upstream of Echo.
+

@@ -65,27 +65,59 @@ export async function getMe() {
   }
 }
 
+// How long the app waits for a Pi-mic capture before giving up: the recording
+// time plus this. The server kills an overrunning recording at +10 s and the
+// analysis at +60 s, so past this point no answer is coming.
+export const CAPTURE_EXTRA_WAIT_S = 75
+
 // Trigger a Pi-mic capture of `duration` seconds (owner only).
 //
-// When the owner's sign-in has expired, the answer is not a normal error:
-// Cloudflare answers the request itself with a redirect to its sign-in page
-// (which `fetch` can't follow across origins), or Echo answers 404. Both mean
-// "signed out", flagged as `err.signedOut` so the app can hide the button and
-// point at /me. `redirect: 'manual'` makes the redirect visible instead of a
-// generic network failure.
-export async function captureMic(duration) {
-  const res = await fetch('/capture', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ duration }),
-    redirect: 'manual',
-  })
+// The duration goes in the URL and the request has NO body. A capture once
+// hung for minutes because the server was still waiting for the end of the
+// request body; with nothing to send there is nothing to wait for.
+//
+// Failures are told apart on `err.kind`, so the app can say what happened:
+//   'signed_out'  the owner's sign-in has expired. Cloudflare then answers the
+//                 request itself with a redirect to its sign-in page (which
+//                 fetch can't follow across origins; `redirect: 'manual'`
+//                 makes it visible), or Echo answers 404.
+//   'timed_out'   no answer within duration + CAPTURE_EXTRA_WAIT_S; the
+//                 request is aborted.
+//   'mic_busy' | 'mic_not_found' | 'mic_timeout' | 'mic_failed'
+//                 the server's X-Echo-Error reason for a failed recording.
+//   'network'     the request never got an answer (offline, tunnel down).
+export async function captureMic(duration, { timeoutMs } = {}) {
+  const limit = timeoutMs ?? (Number(duration) + CAPTURE_EXTRA_WAIT_S) * 1000
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), limit)
+  let res
+  try {
+    res = await fetch(`/capture?duration=${encodeURIComponent(duration)}`, {
+      method: 'POST',
+      redirect: 'manual',
+      signal: controller.signal,
+    })
+  } catch (e) {
+    const timedOut = controller.signal.aborted
+    const err = new Error(timedOut
+      ? `No answer from the Pi after ${Math.round(limit / 1000)} seconds, so the app stopped waiting.`
+      : (e?.message || 'Failed to fetch'))
+    err.kind = timedOut ? 'timed_out' : 'network'
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
   if (res.type === 'opaqueredirect' || [401, 403, 404].includes(res.status)) {
     const err = new Error('Your Pi mic sign-in has expired.')
+    err.kind = 'signed_out'
     err.signedOut = true
     throw err
   }
-  if (!res.ok) throw await apiError(res)
+  if (!res.ok) {
+    const err = await apiError(res)
+    err.kind = res.headers?.get?.('X-Echo-Error') || undefined
+    throw err
+  }
   return res.json()
 }
 

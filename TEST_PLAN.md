@@ -28,8 +28,8 @@ open — all for reasons outside app/test code, not failures.
 
 ## Public launch additions (v1.7, 2026-11-13)
 
-Added with the launch work (`docs/LAUNCH.md`). Counts after it: **pytest 181
-passed** (was 105), **Vitest 101** (was 84), **Playwright 38** (was 31),
+Added with the launch work (`docs/LAUNCH.md`). Counts after it: **pytest 190
+passed** (was 105), **Vitest 109** (was 84), **Playwright 38** (was 31),
 Lighthouse accessibility 100. The older sections below are unchanged except
 where noted here.
 
@@ -41,6 +41,7 @@ where noted here.
 | PROT-001…011 | `tests/test_protect.py` | Rate limiter; 429 on `/upload` per browser and per IP; `CF-Connecting-IP` trusted only from localhost; the busy 503 (refunded, server stays responsive); the concurrency clamp; oversize/length-less uploads refused before the body is read; ffmpeg timeouts and `-nostdin`; no-audio files refused before decoding; temp dir always removed |
 | SEC-001…004 | `tests/test_hardening.py` | API docs off unless `ECHO_DEV=1`; security headers on every kind of response; the CSP's contents |
 | WORK-001…006 | `tests/test_worker.py` | The analysis worker process (production's mode): runs in a separate long-lived process; same 422 across the boundary; an overrunning job is killed and the worker replaced with nothing left behind; a worker dying mid-job is a 500 and recovers; stops with the app; process mode is the default |
+| CAP-001…007 | `tests/test_capture.py` | Pi mic capture guards: duration from the URL with no body; rec limit = duration + 10 s; an overrunning rec is killed with everything it started; busy / not-found / empty failures each have a message and an `X-Echo-Error` reason; every `/capture` request leaves a timeline with no IP, visitor ID or token |
 | FE-015 + additions | `frontend/src/__tests__/` | `useClipActions.test.jsx` (Pi mic only for the owner, the "sign in again" hint, 503/429 as notices); Gallery delete (two presses) and the browser-only note; `api.test.js` (`getMe`, `deleteClip`, `captureMic` sign-out detection, no `credentials`); Landing FAQ copy and the Privacy dialog; phone home without the Pi mic |
 | E2E-020…025 | `e2e/specs/launch.spec.mjs` | Two browser contexts are isolated (list, open, play, delete; cookieless sees nothing); delete from the History sheet; no Pi mic and no owner route without the sign-in, `/docs` 404; security headers and **zero CSP violations with the 3D view on screen**; 503 and 429 as friendly notices; the Privacy dialog |
 

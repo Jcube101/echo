@@ -11,13 +11,15 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import (Body, Depends, FastAPI, File, Form, HTTPException, Query,
+                     Request, UploadFile)
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +31,7 @@ from storage import (MAX_UPLOAD_BYTES, ProcessingError, delete_clip,
                      discard_partial, new_clip_id, process_audio, run_retention)
 from analysis_worker import AnalysisCrashed, AnalysisTimeout, AnalysisWorker
 import access
+import capture_trace
 import samples as sample_lib
 import visitor
 from ratelimit import RateLimiter
@@ -292,6 +295,11 @@ async def _security_headers(request: Request, call_next):
     return response
 
 
+# Outermost of all (added last): times every /capture request from the moment
+# its headers arrive (capture_trace.py). Other paths pass straight through.
+app.add_middleware(capture_trace.CaptureTrace)
+
+
 def _visitor_id(request: Request) -> str:
     """The requesting browser's ID. Never None: a route the middleware doesn't
     cover gets a throwaway ID that owns nothing (a None here would match the
@@ -365,40 +373,106 @@ class CaptureRequest(BaseModel):
     duration: float = Field(default=5.0, gt=0, le=MAX_DURATION_S)
 
 
+# rec gets the recording time plus this long, then it is killed (LEARNINGS.md
+# "Pi mic capture hang"). arecord normally exits within a fraction of a second
+# of its -d duration.
+REC_GRACE_S = 10
+ERROR_HEADER = "X-Echo-Error"   # machine-readable reason, for the app's message
+
+
+def _run_rec(cmd: list[str], timeout_s: float) -> tuple[int, str]:
+    """Run ~/bin/rec and return (exit code, stderr). Blocking.
+
+    rec is a shell script that starts arecord, so it runs in its own process
+    group and, on timeout, the WHOLE group is killed. Killing only the script
+    would leave arecord alive, still holding the mic and the output pipes.
+    Raises subprocess.TimeoutExpired after the group is dead.
+    """
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        _out, err = proc.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    return proc.returncode, err or ""
+
+
+def _mic_error(stderr: str) -> HTTPException:
+    """A failed rec, as a clear 503 with a reason the app can act on."""
+    text = stderr.strip() or "recording produced no audio"
+    low = text.lower()
+    if "busy" in low:
+        code, msg = "mic_busy", ("The Pi mic is busy: something else is recording "
+                                 "right now. Try again in a moment.")
+    elif any(k in low for k in ("audio open error", "no such", "cannot find card",
+                                "unknown pcm", "not found")):
+        # An ALSA card shift is Job's fix (CLAUDE.md): report it, never retry.
+        code, msg = "mic_not_found", ("The Pi couldn't open its mic. It may be unplugged, "
+                                      "or its sound-card number may have changed.")
+    else:
+        code, msg = "mic_failed", "Mic capture failed."
+    return HTTPException(status_code=503, detail=f"{msg} ({text[:160]})",
+                         headers={ERROR_HEADER: code})
+
+
 @app.post("/capture", dependencies=[Depends(access.require_owner)])
-async def capture(req: CaptureRequest, vid: str = Depends(_visitor_id)):
+async def capture(request: Request,
+                  duration: float | None = Query(default=None, gt=0, le=MAX_DURATION_S),
+                  req: CaptureRequest | None = Body(default=None),
+                  vid: str = Depends(_visitor_id)):
     """Record `duration` s from the Pi USB mic via ~/bin/rec, then process.
 
     Owner only (docs/LAUNCH.md §2): 404 without a valid Cloudflare Access
     token, checked before anything else, on every network.
 
+    `duration` (≤60) comes from the query string (`POST /capture?duration=10`,
+    no body: what the app sends) or from a JSON body `{"duration": 10}`.
+
     The mic is acquired only for the recording window (rec is synchronous and
-    exits when done) and released immediately — no background listening.
+    exits when done) and released immediately — no background listening. rec
+    is killed if it runs more than REC_GRACE_S past the recording time.
     """
+    secs = duration if duration is not None else (req.duration if req else 5.0)
     if not os.path.exists(REC_WRAPPER):
+        capture_trace.note(request, "rec wrapper missing")
         raise HTTPException(status_code=503,
-                            detail="Pi mic wrapper (~/bin/rec) not found.")
+                            detail="Pi mic wrapper (~/bin/rec) not found.",
+                            headers={ERROR_HEADER: "mic_not_found"})
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="echo_cap_"))
     raw_path = tmp_dir / f"cap_{uuid.uuid4().hex[:8]}.wav"
     try:
         # Recording is light, so it doesn't hold an analysis slot; the
         # processing afterwards does.
-        proc = await run_in_threadpool(
-            subprocess.run,
-            [REC_WRAPPER, str(raw_path), str(int(req.duration))],
-            capture_output=True, text=True,
-            timeout=req.duration + 20,
-        )
-        if proc.returncode != 0 or not raw_path.exists() or raw_path.stat().st_size == 0:
-            detail = proc.stderr.strip() or "recording produced no audio"
-            # ALSA card shift is Job's fix (per CLAUDE.md) — surface, don't retry.
-            raise HTTPException(status_code=503,
-                                detail=f"Mic capture failed: {detail[:200]}")
+        capture_trace.note(request, f"rec started ({int(secs)} s, limit {int(secs) + REC_GRACE_S} s)")
+        try:
+            code, stderr = await run_in_threadpool(
+                _run_rec, [REC_WRAPPER, str(raw_path), str(int(secs))],
+                secs + REC_GRACE_S)
+        except subprocess.TimeoutExpired:
+            capture_trace.note(request, "rec killed: ran past its limit")
+            raise HTTPException(
+                status_code=504,
+                detail=(f"The Pi mic didn't finish a {int(secs)} s recording within "
+                        f"{int(secs) + REC_GRACE_S} s, so it was stopped. Try again."),
+                headers={ERROR_HEADER: "mic_timeout"})
+        size = raw_path.stat().st_size if raw_path.exists() else 0
+        capture_trace.note(request, f"rec ended (exit {code}, {size} bytes)")
+        if code != 0 or size == 0:
+            raise _mic_error(stderr)
+        capture_trace.note(request, "analysis started")
         result = await _analyse(raw_path, source_type="pi_mic", owner_id=vid)
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Mic capture timed out.")
+        capture_trace.note(request, "analysis finished")
     except ProcessingError as e:
+        capture_trace.note(request, "analysis refused the recording")
         raise HTTPException(status_code=422, detail=str(e))
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)

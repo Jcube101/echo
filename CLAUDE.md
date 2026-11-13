@@ -180,6 +180,12 @@ Echo is public, with no logins. These hold in every later session:
   `ECHO_CF_TEAM_DOMAIN` are unset. Those two values live only in
   `/home/jcube/.config/echo/access.env` (outside the repo, `chmod 600`) —
   never in git, never printed in a report.
+- **`/capture` stays traceable and bounded.** The app sends it with no
+  request body (`?duration=`); `rec` is killed, process group and all, at
+  duration + 10 s; `capture_trace.py` logs each step with no IPs, visitor IDs
+  or token values. Read it with `journalctl -u echo -o cat | grep '^capture'`.
+  Give any new long-running route the same treatment (LEARNINGS.md "Pi mic
+  capture hang").
 - **Heavy work goes through `_analyse()`** (one at a time, in the analysis
   worker process, with the 60 s kill). Don't call `process_audio` from a
   route directly, and don't run ffmpeg/librosa in the web process.

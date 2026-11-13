@@ -72,6 +72,27 @@ describe('useClipActions', () => {
   })
 
   it.each([
+    ['timed_out', 'No answer from the Pi after 85 seconds, so the app stopped waiting.', 'Pi mic timed out', /may still have been saved: check History/],
+    ['mic_timeout', "The Pi mic didn't finish a 10 s recording within 20 s, so it was stopped. Try again.", 'Pi mic timed out', /so it was stopped/],
+    ['mic_busy', 'The Pi mic is busy: something else is recording right now.', 'Pi mic is busy', /something else is recording/],
+    ['mic_not_found', "The Pi couldn't open its mic.", 'Pi mic not found', /couldn't open its mic/],
+    ['network', 'Failed to fetch', "Couldn't reach Echo", /got no answer/],
+  ])('names a %s capture failure for what it is', async (kind, message, title, body) => {
+    api.getMe.mockResolvedValue({ pi_mic: true })
+    api.captureMic.mockRejectedValue(Object.assign(new Error(message), { kind, status: kind.startsWith('mic') ? 503 : undefined }))
+    const { result, onStatus } = setup()
+    await waitFor(() => expect(result.current.piMic).toBe(true))
+    await act(() => result.current.runCapture())
+    expect(toast.error).toHaveBeenCalledTimes(1)
+    const [gotTitle, { description }] = toast.error.mock.calls[0]
+    expect(gotTitle).toBe(title)
+    expect(description).toMatch(body)
+    if (kind !== 'network') expect(description).not.toMatch(/check your connection/i)
+    expect(result.current.piMic).toBe(true)          // only a sign-out hides the button
+    expect(onStatus).toHaveBeenLastCalledWith('error', description)
+  })
+
+  it.each([
     [503, 'Echo is busy — try again in a moment.', 'Echo is busy'],
     [429, "You've reached the upload limit (10 per hour). Try again in about 12 minutes.", 'Upload limit reached'],
   ])('shows a %i as a plain notice, not an error', async (status, message, title) => {

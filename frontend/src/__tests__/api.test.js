@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  uploadAudio, captureMic, deleteClip, getHistory, getClip, getMe, getSamples, getSample, isTryLater,
+  uploadAudio, captureMic, deleteClip, friendlyError, getHistory, getClip, getMe, getSamples, getSample,
+  isTryLater, CAPTURE_EXTRA_WAIT_S,
 } from '../lib/api.js'
 
 // FE-005 — api.js error parsing. This is what the user sees in the error
@@ -84,6 +85,58 @@ describe('api.js error parsing', () => {
     const broken = await captureMic(5).catch((e) => e)
     expect(broken.signedOut).toBeUndefined()
     expect(broken.message).toBe('Mic capture failed: audio open error')
+  })
+
+  it('captureMic sends the duration in the URL with no body and no extra headers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'x' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    await captureMic(10)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/capture?duration=10')
+    expect(init.method).toBe('POST')
+    expect(init.redirect).toBe('manual')
+    expect(init.body).toBeUndefined()        // nothing for the server to wait for
+    expect(init.headers).toBeUndefined()
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('captureMic gives up after duration + 75 s and says so (timed_out), not "check your connection"', async () => {
+    expect(CAPTURE_EXTRA_WAIT_S).toBe(75)
+    vi.useFakeTimers()
+    try {
+      // A server that never answers; fetch rejects only when the app aborts.
+      vi.stubGlobal('fetch', vi.fn((_url, init) => new Promise((_res, rej) => {
+        init.signal.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))
+      })))
+      const pending = captureMic(10).catch((e) => e)
+      await vi.advanceTimersByTimeAsync(84_000)
+      expect(fetch.mock.calls[0][1].signal.aborted).toBe(false)   // still waiting at 84 s
+      await vi.advanceTimersByTimeAsync(1_000)                    // 85 s = 10 + 75
+      const err = await pending
+      expect(err.kind).toBe('timed_out')
+      expect(err.message).toBe('No answer from the Pi after 85 seconds, so the app stopped waiting.')
+      expect(friendlyError(err)).not.toMatch(/check your connection/i)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('captureMic tells a network failure and each mic failure apart', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+    expect((await captureMic(5).catch((e) => e)).kind).toBe('network')
+
+    for (const kind of ['mic_busy', 'mic_not_found', 'mic_timeout', 'mic_failed']) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: false, status: kind === 'mic_timeout' ? 504 : 503,
+        headers: { get: (h) => (h === 'X-Echo-Error' ? kind : null) },
+        json: async () => ({ detail: `server says ${kind}` }),
+      }))
+      const err = await captureMic(5).catch((e) => e)
+      expect(err.kind).toBe(kind)
+      expect(err.message).toBe(`server says ${kind}`)
+    }
+    mockFetch(404, { detail: 'Not Found' })
+    expect((await captureMic(5).catch((e) => e)).kind).toBe('signed_out')
   })
 
   it('deleteClip sends DELETE /history/{id} and surfaces a refusal', async () => {

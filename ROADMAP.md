@@ -287,11 +287,13 @@ feature schema — no `FEATURE_SCHEMA_VERSION` bump.
   cookie, owner checks on every clip route, `DELETE /history/{id}`, retention
   of 20 per browser / 500 clips or 1 GB site-wide / 30 days inactive (L6). The
   44 existing ownerless clips were dropped at deploy (L7, Job's call)
-- 🚧 **In progress** — §2 Pi mic for Job only, via Cloudflare Access (L5).
-  **Built and live:** Echo verifies the Access token itself and fails closed;
-  `/me`, `/api/me`; the Pi mic button shows only for the signed-in owner.
-  **Waiting on Job:** the Access application and `access.env`, then a real
-  recording after signing in at `/me`
+- ✅ **Shipped (live 2026-11-13)** — §2 Pi mic for Job only, via Cloudflare
+  Access (L5): Echo verifies the Access token itself and fails closed; `/me`,
+  `/api/me`; the Pi mic button shows only for the signed-in owner. Job set up
+  Access and recorded after signing in at `/me`, on his phone and on desktop.
+  A first attempt hung for five minutes (the end of the request body reached
+  Echo late); fixed by sending no body, with a kill guard on `rec`, an abort
+  timer in the app and a per-request trace log
 - ✅ **Shipped (live 2026-11-13)** — §3 Protect the Pi: one analysis at a time
   in a separate worker process with a 60 s kill (503 when busy), upload rate
   limits (429), ffmpeg timeouts, a locked-down `echo.service` (exposure
@@ -397,6 +399,11 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-11-13** — Pi mic capture hang found and fixed (the request body's end
+  arrived minutes late; captures now send no body); rec kill guard, app abort
+  timer and a `/capture` trace log added. Job confirmed Pi mic recording after
+  the `/me` sign-in on phone and desktop, so §2 is shipped. v1.7 now waits only
+  on the Android Chrome and iPhone browser-recording checks.
 - **2026-11-13** — v1.7 Public Launch built and live: private history per
   browser, new retention (L6), the owner-only gate, the analysis worker
   process, rate limits, the service lock-down, security headers. Decided

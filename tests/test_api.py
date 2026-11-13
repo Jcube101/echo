@@ -404,14 +404,16 @@ def test_API_022_capture_failure_and_timeout(client, monkeypatch, rec_stub, sign
     monkeypatch.setattr(main_module, "REC_WRAPPER", str(rec_stub("fail")))
     res = client.post("/capture", json={"duration": 2})
     assert res.status_code == 503
-    assert "Mic capture failed" in res.json()["detail"]
+    assert "audio open error" in res.json()["detail"]   # rec's own words are kept
+    assert res.headers["x-echo-error"] == "mic_not_found"
 
     def fake_run(*args, **kwargs):
         raise subprocess.TimeoutExpired(cmd="rec", timeout=kwargs.get("timeout", 0))
-    monkeypatch.setattr(main_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(main_module, "_run_rec", fake_run)
     res2 = client.post("/capture", json={"duration": 2})
     assert res2.status_code == 504
-    assert "timed out" in res2.json()["detail"].lower()
+    assert "so it was stopped" in res2.json()["detail"]
+    assert res2.headers["x-echo-error"] == "mic_timeout"
 
 
 def test_API_023_capture_duration_validation(client, signed_in):
