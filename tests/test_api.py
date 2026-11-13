@@ -358,14 +358,15 @@ def test_API_018_staticfiles_never_shadows_api_routes(client_with_frontend):
 
 
 def test_API_019_health(client):
-    """GET /api/health -> {"status": "ok"} (the readiness probe used by the
-    hardware-recovery checks)."""
+    """GET /api/health -> exactly {"ok": true, "status": "ok"}: public, and
+    nothing else in it (docs/LAUNCH.md §4; `status` kept per decision L9 for
+    the hardware-recovery checks and any outside monitor)."""
     res = client.get("/api/health")
     assert res.status_code == 200
-    assert res.json() == {"status": "ok"}
+    assert res.json() == {"ok": True, "status": "ok"}
 
 
-def test_API_020_capture_wrapper_missing(client, monkeypatch):
+def test_API_020_capture_wrapper_missing(client, monkeypatch, signed_in):
     """POST /capture with REC_WRAPPER pointed at a nonexistent path -> 503
     "Pi mic wrapper (~/bin/rec) not found."."""
     monkeypatch.setattr(main_module, "REC_WRAPPER", "/definitely/not/a/real/path/rec")
@@ -374,7 +375,7 @@ def test_API_020_capture_wrapper_missing(client, monkeypatch):
     assert "rec" in res.json()["detail"]
 
 
-def test_API_021_capture_happy_path_via_stub(client, monkeypatch, rec_stub):
+def test_API_021_capture_happy_path_via_stub(client, monkeypatch, rec_stub, signed_in):
     """POST /capture via a stub rec script (never the real ~/bin/rec) -> 200,
     full pipeline runs, history row has source_type == "pi_mic".
 
@@ -391,7 +392,7 @@ def test_API_021_capture_happy_path_via_stub(client, monkeypatch, rec_stub):
     assert any(r["id"] == data["id"] and r["source_type"] == "pi_mic" for r in hist)
 
 
-def test_API_022_capture_failure_and_timeout(client, monkeypatch, rec_stub):
+def test_API_022_capture_failure_and_timeout(client, monkeypatch, rec_stub, signed_in):
     """A rec script that exits non-zero surfaces its stderr as a 503 (the
     ALSA card-shift symptom is *reported*, never retried); a rec invocation
     that exceeds its timeout budget surfaces as 504.
@@ -413,7 +414,7 @@ def test_API_022_capture_failure_and_timeout(client, monkeypatch, rec_stub):
     assert "timed out" in res2.json()["detail"].lower()
 
 
-def test_API_023_capture_duration_validation(client):
+def test_API_023_capture_duration_validation(client, signed_in):
     """/capture duration validation: 61 and 0 -> 422 (pydantic gt=0,
     le=MAX_DURATION_S).
 
@@ -454,10 +455,14 @@ def test_API_024_upload_source_and_name_in_history(client, audio_factory):
 
 def test_API_025_source_name_column_added_to_existing_db(tmp_path, monkeypatch):
     """A clips table created before `source_name` existed gets the column on
-    startup; its old rows read back with name = None."""
+    startup; its old rows read back with name = None.
+
+    Since the launch work (docs/LAUNCH.md §1) such a row also has no owner, so
+    no browser sees it in /history; the row itself is read from the DB.
+    """
     import sqlite3
     from fastapi.testclient import TestClient
-    from conftest import _reload_backend
+    from conftest import TEST_BASE_URL, _reload_backend
 
     data = tmp_path / "data"
     data.mkdir()
@@ -471,7 +476,11 @@ def test_API_025_source_name_column_added_to_existing_db(tmp_path, monkeypatch):
     con.close()
 
     main = _reload_backend(data, monkeypatch)
-    with TestClient(main.app) as c:
-        rows = c.get("/history").json()
-    assert rows == [{"id": "old1", "created_at": "2026-07-01T10:00:00+00:00",
-                     "source_type": "upload", "name": None, "duration_s": 1.0}]
+    with TestClient(main.app, base_url=TEST_BASE_URL) as c:
+        assert c.get("/history").json() == []  # nobody's clip
+    import db
+    with db.SessionLocal() as session:
+        old = session.get(db.Clip, "old1")
+        assert old.to_summary() == {
+            "id": "old1", "created_at": "2026-07-01T10:00:00+00:00",
+            "source_type": "upload", "name": None, "duration_s": 1.0}

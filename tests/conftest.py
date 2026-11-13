@@ -11,6 +11,7 @@ CLAUDE.md's guardrails.
 from __future__ import annotations
 
 import importlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -133,12 +134,24 @@ def audio_factory(tmp_path):
 
 # --- isolated backend: temp data dir + temp SQLite ----------------------------
 
+# The echo_vid cookie is Secure (visitor.py), and httpx only sends a Secure
+# cookie back over https, so every TestClient talks to an https base URL. Each
+# TestClient has its own cookie jar, so each one is a separate "browser".
+TEST_BASE_URL = "https://testserver"
+
+
 def _reload_backend(data_dir: Path, monkeypatch, frontend_dist: Path | None = None):
     """Point db/storage/main at a temp data dir and reload them so every
     module-level path + SQLAlchemy engine rebinds to it. Never touches the
     real data/ (ECHO_DATA_DIR seam) or the real frontend/dist
     (ECHO_FRONTEND_DIST seam)."""
     monkeypatch.setenv("ECHO_DATA_DIR", str(data_dir))
+    # The suite analyses clips in a thread of the test process (so tests can
+    # stub the pipeline, and no test pays for starting a worker process).
+    # Production's worker-process mode has its own tests: WORK-* in
+    # test_worker.py, which set this to "process" before asking for the app.
+    if "ECHO_ANALYSIS_MODE" not in os.environ:
+        monkeypatch.setenv("ECHO_ANALYSIS_MODE", "thread")
     if frontend_dist is not None:
         monkeypatch.setenv("ECHO_FRONTEND_DIST", str(frontend_dist))
     else:
@@ -175,7 +188,17 @@ def client(isolated_backend):
     """A TestClient for the isolated app (triggers startup -> init_db())."""
     from fastapi.testclient import TestClient
     main, _db, _storage = isolated_backend
-    with TestClient(main.app) as c:
+    with TestClient(main.app, base_url=TEST_BASE_URL) as c:
+        yield c
+
+
+@pytest.fixture
+def other_client(isolated_backend):
+    """A second browser on the same isolated app: its own cookie jar, so its
+    own echo_vid (for the ownership tests, docs/LAUNCH.md §1)."""
+    from fastapi.testclient import TestClient
+    main, _db, _storage = isolated_backend
+    with TestClient(main.app, base_url=TEST_BASE_URL) as c:
         yield c
 
 
@@ -201,7 +224,7 @@ def isolated_backend_with_frontend(tmp_path, monkeypatch):
 def client_with_frontend(isolated_backend_with_frontend):
     from fastapi.testclient import TestClient
     main, _db, _storage = isolated_backend_with_frontend
-    with TestClient(main.app) as c:
+    with TestClient(main.app, base_url=TEST_BASE_URL) as c:
         yield c
 
 
@@ -233,3 +256,78 @@ def rec_stub(tmp_path):
         return script
 
     return _make
+
+
+# --- Cloudflare Access test double (docs/LAUNCH.md §2) -------------------------
+# A throwaway RSA key stands in for Cloudflare's signing key: the gate is
+# configured through its env vars, and access._fetch_jwks is replaced so no
+# test ever talks to Cloudflare.
+
+ACCESS_AUD = "test-aud-tag-0123456789abcdef"
+ACCESS_DOMAIN = "echo-test.cloudflareaccess.com"
+ACCESS_KID = "test-key-1"
+
+
+@pytest.fixture(scope="session")
+def access_rsa_keys():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    return (rsa.generate_private_key(public_exponent=65537, key_size=2048),
+            rsa.generate_private_key(public_exponent=65537, key_size=2048))
+
+
+@pytest.fixture
+def access_gate(monkeypatch, access_rsa_keys):
+    """Configure the gate and return `make_token(**overrides)`.
+
+    Overrides: aud, iss, exp (seconds from now), kid, key ("real" | "forged").
+    `make_token.fetches` counts key-set downloads.
+    """
+    import json
+    import time
+    import jwt
+    import access
+
+    real, forged = access_rsa_keys
+    monkeypatch.setenv("ECHO_CF_ACCESS_AUD", ACCESS_AUD)
+    monkeypatch.setenv("ECHO_CF_TEAM_DOMAIN", ACCESS_DOMAIN)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(real.public_key()))
+    jwk.update({"kid": ACCESS_KID, "alg": "RS256", "use": "sig"})
+
+    def make_token(aud=ACCESS_AUD, iss=f"https://{ACCESS_DOMAIN}", exp=3600,
+                   kid=ACCESS_KID, key="real"):
+        now = int(time.time())
+        claims = {"aud": [aud], "iss": iss, "iat": now - 5, "exp": now + exp,
+                  "email": "owner@example.com", "sub": "test-subject"}
+        return jwt.encode(claims, real if key == "real" else forged,
+                          algorithm="RS256", headers={"kid": kid})
+
+    make_token.fetches = 0
+
+    def fake_fetch(domain):
+        make_token.fetches += 1
+        assert domain == ACCESS_DOMAIN
+        return {"keys": [jwk]}
+
+    monkeypatch.setattr(access, "_fetch_jwks", fake_fetch)
+    access.reset_cache()
+    yield make_token
+    access.reset_cache()
+
+
+def set_cookie(c, name, value):
+    """Put one cookie in a TestClient's jar, replacing what was there.
+
+    Set without a domain on purpose: httpx never sends a cookie stored with
+    domain="testserver" (a dotless host), so a test that set one that way
+    would pass or fail for the wrong reason.
+    """
+    c.cookies.clear()
+    c.cookies.set(name, value)
+
+
+@pytest.fixture
+def signed_in(client, access_gate):
+    """`client` becomes the owner's browser: every request carries a valid
+    Access token, as Cloudflare adds it on the paths the Access app covers."""
+    client.headers["Cf-Access-Jwt-Assertion"] = access_gate()
+    return client

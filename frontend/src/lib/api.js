@@ -1,5 +1,7 @@
 // API client. Same-origin in production (FastAPI serves the build); in dev,
-// Vite proxies these paths to :8014. No CORS, no credentials (locked).
+// Vite proxies these paths to :8014. No CORS, no credentials (locked): the
+// browser sends this site's own cookies on same-origin requests by default,
+// which is all the private-history cookie needs.
 
 async function parseError(res) {
   try {
@@ -8,6 +10,21 @@ async function parseError(res) {
   } catch {
     return `Request failed (${res.status})`
   }
+}
+
+// The error thrown for a non-OK response. `status` lets callers tell the two
+// "come back later" answers apart from real failures: 503 (Echo is analysing
+// someone else's clip) and 429 (this browser has hit its upload limit).
+async function apiError(res) {
+  const err = new Error(await parseError(res))
+  err.status = res.status
+  return err
+}
+
+// True for the server's polite "not right now" answers, which the app shows
+// as a plain notice rather than a red error.
+export function isTryLater(err) {
+  return err?.status === 503 || err?.status === 429
 }
 
 // A caught error's message, in plain terms — for toasts and status banners.
@@ -30,31 +47,64 @@ export async function uploadAudio(fileOrBlob, filename = 'clip', source = 'uploa
   form.append('file', fileOrBlob, filename)
   form.append('source', source)
   const res = await fetch('/upload', { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await parseError(res))
+  if (!res.ok) throw await apiError(res)
   return res.json()
 }
 
-// Trigger a Pi-mic capture of `duration` seconds.
+// Is this the owner's browser? The Pi mic is for the site's owner only, behind
+// a Cloudflare Access sign-in at /me; the app shows its button only when this
+// says so. Any failure reads as "no".
+export async function getMe() {
+  try {
+    const res = await fetch('/api/me')
+    if (!res.ok) return { pi_mic: false }
+    const data = await res.json()
+    return { pi_mic: data.pi_mic === true }
+  } catch {
+    return { pi_mic: false }
+  }
+}
+
+// Trigger a Pi-mic capture of `duration` seconds (owner only).
+//
+// When the owner's sign-in has expired, the answer is not a normal error:
+// Cloudflare answers the request itself with a redirect to its sign-in page
+// (which `fetch` can't follow across origins), or Echo answers 404. Both mean
+// "signed out", flagged as `err.signedOut` so the app can hide the button and
+// point at /me. `redirect: 'manual'` makes the redirect visible instead of a
+// generic network failure.
 export async function captureMic(duration) {
   const res = await fetch('/capture', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ duration }),
+    redirect: 'manual',
   })
-  if (!res.ok) throw new Error(await parseError(res))
+  if (res.type === 'opaqueredirect' || [401, 403, 404].includes(res.status)) {
+    const err = new Error('Your Pi mic sign-in has expired.')
+    err.signedOut = true
+    throw err
+  }
+  if (!res.ok) throw await apiError(res)
   return res.json()
 }
 
 export async function getHistory() {
   const res = await fetch('/history')
-  if (!res.ok) throw new Error(await parseError(res))
+  if (!res.ok) throw await apiError(res)
   return res.json()
 }
 
 export async function getClip(id) {
   const res = await fetch(`/history/${id}`)
-  if (!res.ok) throw new Error(await parseError(res))
+  if (!res.ok) throw await apiError(res)
   return res.json()
+}
+
+// Delete one of this browser's clips (its audio and features go with it).
+export async function deleteClip(id) {
+  const res = await fetch(`/history/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw await apiError(res)
 }
 
 // Curated sample library (permanent, separate from personal history).

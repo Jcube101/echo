@@ -40,9 +40,18 @@ describe('featuredSamples', () => {
 describe('PhoneHome', () => {
   afterEach(() => vi.resetAllMocks())
 
-  it('offers record, upload, Pi mic and four samples, each wired to its action', async () => {
+  it('hides the Pi mic from everyone but the signed-in owner', async () => {
     api.getSamples.mockResolvedValue(library)
-    const actions = makeActions()
+    render(<PhoneHome actions={makeActions()} busy={false} onPickSample={vi.fn()} onOpenSamples={vi.fn()} onOpenHistory={vi.fn()} loadingSampleId={null} />)
+    await screen.findAllByTestId('home-sample')
+    expect(screen.getByTitle('Upload an audio or video file')).toBeInTheDocument()
+    expect(screen.queryByTitle("Record from the Pi's USB mic")).toBeNull()
+    expect(screen.queryByText('Pi mic')).toBeNull()
+  })
+
+  it('offers record, upload, Pi mic (owner) and four samples, each wired to its action', async () => {
+    api.getSamples.mockResolvedValue(library)
+    const actions = makeActions({ piMic: true })
     const onPickSample = vi.fn()
     const onOpenSamples = vi.fn()
     const onOpenHistory = vi.fn()

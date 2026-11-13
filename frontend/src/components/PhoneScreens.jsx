@@ -80,12 +80,12 @@ export function PhoneHome({ actions, busy, onOpenHistory, onOpenSamples, onPickS
         <p className="mt-2 text-[15px] text-muted-foreground">Up to 60 seconds</p>
       </div>
 
-      <div className="mt-7 grid grid-cols-2 gap-3">
+      <div className={'mt-7 grid gap-3 ' + (actions.piMic ? 'grid-cols-2' : 'grid-cols-1')}>
         <Button onClick={pickFile} disabled={busy} title="Upload an audio or video file" className={HEADER_BTN + ' h-[52px] rounded-[14px]'}>
           {inFlight === 'upload' ? <Loader2 className="animate-spin" /> : <Upload />}
           Upload
         </Button>
-        <PiMicControl actions={actions} busy={busy} className="h-[52px] rounded-[14px]" />
+        {actions.piMic && <PiMicControl actions={actions} busy={busy} className="h-[52px] rounded-[14px]" />}
       </div>
 
       <section aria-label="Samples" className="mt-8">

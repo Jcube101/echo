@@ -102,6 +102,21 @@ export default function App() {
     setHistoryKey((k) => k + 1)
   }, [applyClip])
 
+  // A clip deleted from the History sheet: refresh the sidebar's list, and if
+  // it was the one on screen, go back to the starting view (its audio is gone).
+  const onClipDeleted = useCallback((id) => {
+    setHistoryKey((k) => k + 1)
+    if (id !== clipId) return
+    setFeatures(sample)
+    setSpectrogram(null)
+    setAudioUrl(null)
+    setClipId(null)
+    setClipInfo(null)
+    setPlayheadSec(0)
+    setDuration(sample.length ? sample[sample.length - 1].t : 0)
+    setShowResult(false)
+  }, [clipId])
+
   // Sidebar "Recent clips": reload a stored clip (same path as the History sheet).
   const loadHistoryClip = useCallback(async (id) => {
     onStatus('processing', 'Loading clip…')
@@ -143,7 +158,7 @@ export default function App() {
   }, [intent, loadSample])
 
   // Upload, browser recording and Pi capture — one owner for every layout.
-  const actions = useClipActions({ onStatus, onResult, autoRecord })
+  const actions = useClipActions({ onStatus, onResult, autoRecord, justSignedIn: intent.owner })
 
   // Drag & drop anywhere over the scene.
   const onDrop = useCallback(async (e) => {
@@ -222,6 +237,7 @@ export default function App() {
         refreshKey={historyKey}
         onLoaded={applyClip}
         onStatus={onStatus}
+        onDeleted={onClipDeleted}
       />
     </>
   )

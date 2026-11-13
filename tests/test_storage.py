@@ -20,14 +20,14 @@ import samples as samples_lib
 
 
 def test_STO_001_retention_evicts_oldest_row_and_files(isolated_backend, audio_factory, monkeypatch):
-    """With RETENTION_LIMIT lowered to 3, saving a 4th clip deletes the
-    oldest clip's DB row AND both its files.
+    """With the site-wide cap (RETENTION_GLOBAL_CLIPS) lowered to 3, saving a
+    4th clip deletes the oldest clip's DB row AND both its files.
 
-    CLAUDE.md locked: "Last 50 entries; oldest entry's files + DB row
-    deleted on each save beyond 50."
+    CLAUDE.md locked (decision L6): 500 clips site-wide; the per-browser,
+    size and inactivity rules are RET-* in test_retention.py.
     """
     main, db, storage = isolated_backend
-    monkeypatch.setattr(storage, "RETENTION_LIMIT", 3)
+    monkeypatch.setattr(storage, "RETENTION_GLOBAL_CLIPS", 3)
 
     results = []
     for i in range(4):
@@ -53,7 +53,7 @@ def test_STO_002_retention_orders_by_created_at_not_insertion(isolated_backend, 
     order or id. created_at values are scrambled after insertion so the
     OLDEST-inserted row is actually the newest, and vice versa."""
     main, db, storage = isolated_backend
-    monkeypatch.setattr(storage, "RETENTION_LIMIT", 3)
+    monkeypatch.setattr(storage, "RETENTION_GLOBAL_CLIPS", 3)
 
     ids = []
     for i in range(3):
@@ -154,13 +154,14 @@ def test_STO_005_metadata_only_db_stays_small(isolated_backend, audio_factory):
     columns = {c.name: c.type.python_type for c in db.Clip.__table__.columns}
     assert set(columns) == {"id", "created_at", "source_type", "duration_s",
                             "feature_path", "audio_path", "schema_version",
-                            "source_name"}
+                            "source_name", "owner_id", "last_seen_at"}
     assert columns["id"] is str
     assert columns["source_type"] is str
     assert columns["feature_path"] is str
     assert columns["audio_path"] is str
     assert columns["duration_s"] is float
     assert columns["schema_version"] is int  # metadata int, still no blobs
+    assert columns["owner_id"] is str  # visitor ID (docs/LAUNCH.md §1)
 
     for i in range(5):
         path = audio_factory.tone(duration=0.5, freq=400 + i * 10, amp=0.5, name=f"c{i}")
@@ -207,10 +208,10 @@ def test_STO_008_sample_library_immune_to_retention(isolated_backend, audio_fact
     rows *by construction*, so eviction can never see them.
 
     CLAUDE.md locked: "Sample library exception … never a clips DB row,
-    never subject to the 50-entry retention rule"; LEARNINGS.md Part D.
+    never subject to the retention rules"; LEARNINGS.md Part D.
     """
     main, db, storage = isolated_backend
-    monkeypatch.setattr(storage, "RETENTION_LIMIT", 2)
+    monkeypatch.setattr(storage, "RETENTION_GLOBAL_CLIPS", 2)
 
     before = samples_lib.list_samples()
     assert len(before) == 14
@@ -257,7 +258,7 @@ def test_STO_010_retention_tolerates_missing_files(isolated_backend, audio_facto
     raise, and still removes the row (unlink(missing_ok=True) + OSError
     guard)."""
     main, db, storage = isolated_backend
-    monkeypatch.setattr(storage, "RETENTION_LIMIT", 2)
+    monkeypatch.setattr(storage, "RETENTION_GLOBAL_CLIPS", 2)
 
     first = storage.process_audio(
         audio_factory.tone(duration=0.4, freq=400.0, amp=0.4, name="first"), source_type="upload")

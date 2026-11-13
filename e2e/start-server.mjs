@@ -13,7 +13,9 @@ const ROOT = path.resolve(__dirname, '..')
 const PORT = process.env.ECHO_E2E_PORT || '8091'
 const dataDir = mkdtempSync(path.join(tmpdir(), 'echo-e2e-data-'))
 
-const distDir = path.join(ROOT, 'frontend', 'dist')
+// ECHO_FRONTEND_DIST (the backend's own test seam) lets a run serve a build
+// from somewhere other than frontend/dist, which is what production serves.
+const distDir = process.env.ECHO_FRONTEND_DIST || path.join(ROOT, 'frontend', 'dist')
 if (!existsSync(distDir)) {
   console.log('[e2e] building frontend (frontend/dist missing)...')
   const build = spawnSync('npm', ['run', 'build'], { cwd: path.join(ROOT, 'frontend'), stdio: 'inherit' })
@@ -29,7 +31,16 @@ const uvicorn = spawn(
   ['main:app', '--host', '127.0.0.1', '--port', PORT],
   {
     cwd: ROOT,
-    env: { ...process.env, ECHO_DATA_DIR: dataDir },
+    // The suite uploads far more than a person would from one address, so the
+    // upload limits (10/hour, 30/day in production) are lifted here; the 429
+    // itself is covered by pytest (PROT-003/004) and by a mocked response in
+    // launch.spec.mjs.
+    env: {
+      ...process.env,
+      ECHO_DATA_DIR: dataDir,
+      ECHO_UPLOADS_PER_HOUR: '100000',
+      ECHO_UPLOADS_PER_DAY: '100000',
+    },
     stdio: 'inherit',
   },
 )

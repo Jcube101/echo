@@ -3,7 +3,7 @@
 A PERMANENT, curated store of example clips (one bird per species) that ships
 with the app so someone with no sound to hand can still see the visualization.
 
-Deliberately independent of the `clips` table and its 50-entry retention: these
+Deliberately independent of the `clips` table and its retention rules: these
 live as static files under `samples/` and are NEVER in the DB, so the retention
 cleanup in storage.py cannot evict them. Seeded by verification/seed_samples.py.
 

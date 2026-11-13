@@ -26,6 +26,54 @@ describe('Gallery', () => {
     expect(screen.getByText(/clip-1/)).toBeInTheDocument()
   })
 
+  it('says the clips are this browser\'s only', async () => {
+    api.getHistory.mockResolvedValue(items)
+    render(<Gallery open currentId={null} refreshKey={0} onLoaded={vi.fn()} onStatus={vi.fn()} />)
+    expect(await screen.findByText('Your clips live in this browser only.')).toBeInTheDocument()
+  })
+
+  it('deletes a clip on the second press of its delete button, not the first', async () => {
+    api.getHistory.mockResolvedValue(items)
+    api.deleteClip.mockResolvedValue(undefined)
+    const onDeleted = vi.fn()
+    const onLoaded = vi.fn()
+    render(<Gallery open currentId={null} refreshKey={0} onLoaded={onLoaded} onStatus={vi.fn()} onDeleted={onDeleted} />)
+    await screen.findByText(/Upload · 5.2s/)
+
+    const buttons = screen.getAllByTestId('history-delete')
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]).toHaveAccessibleName(/^Delete Upload clip, 5\.2 seconds/)
+    fireEvent.click(buttons[0])
+    expect(api.deleteClip).not.toHaveBeenCalled()
+    expect(buttons[0]).toHaveTextContent('Delete?')
+    expect(buttons[0]).toHaveAccessibleName(/^Confirm: delete Upload clip/)
+
+    fireEvent.click(buttons[0])
+    await waitFor(() => expect(api.deleteClip).toHaveBeenCalledWith('clip-1'))
+    await waitFor(() => expect(screen.queryByText(/Upload · 5.2s/)).toBeNull())
+    expect(screen.getByText(/Pi mic · 3.0s/)).toBeInTheDocument()
+    expect(onDeleted).toHaveBeenCalledWith('clip-1')
+    expect(api.getClip).not.toHaveBeenCalled()   // deleting never opens the clip
+    expect(onLoaded).not.toHaveBeenCalled()
+  })
+
+  it('disarms the delete button when focus moves away, and keeps the clip if the delete fails', async () => {
+    api.getHistory.mockResolvedValue(items)
+    api.deleteClip.mockRejectedValue(new Error('Clip not found.'))
+    render(<Gallery open currentId={null} refreshKey={0} onLoaded={vi.fn()} onStatus={vi.fn()} />)
+    await screen.findByText(/Upload · 5.2s/)
+    const btn = screen.getAllByTestId('history-delete')[0]
+
+    fireEvent.click(btn)
+    fireEvent.blur(btn)
+    expect(btn).not.toHaveTextContent('Delete?')
+
+    fireEvent.click(btn)
+    fireEvent.click(btn)
+    await waitFor(() => expect(api.deleteClip).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/Upload · 5.2s/)).toBeInTheDocument()
+  })
+
   it('shows an empty state when there are no clips', async () => {
     api.getHistory.mockResolvedValue([])
     render(<Gallery open currentId={null} refreshKey={0} onLoaded={vi.fn()} onStatus={vi.fn()} />)

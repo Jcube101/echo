@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import React from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import Landing from '../Landing.jsx'
 import { SAMPLES, thumbFor } from '../lib/sampleArt.js'
 
@@ -57,7 +57,26 @@ describe('Landing', () => {
     // If a limit changes, the copy must change with it (DESIGN_V2.md §5).
     expect(faq).toMatch(/up to 60 seconds/i)
     expect(faq).toMatch(/up to 20 MB/)
-    expect(faq).toMatch(/last 50 clips/)
+    expect(faq).toMatch(/only this browser can see it/)
+    expect(faq).toMatch(/haven’t opened in 30 days are deleted/)
+    expect(faq).not.toMatch(/50 clips/)
+  })
+
+  it('has a Privacy dialog in the footer that repeats the FAQ answer word for word', () => {
+    const showModal = vi.fn()
+    HTMLDialogElement.prototype.showModal = showModal
+    const { container } = render(<Landing />)
+    const dialog = container.querySelector('footer dialog')
+    const answer = [...container.querySelectorAll('#faq details')]
+      .find((d) => /Is my audio kept\?/.test(d.textContent)).querySelector('summary ~ *').textContent.trim()
+    expect(answer).toMatch(/^Only a small copy for playback, and only this browser can see it\./)
+    expect(dialog.textContent).toContain(answer)
+    expect(dialog.textContent).toMatch(/no accounts/i)
+    expect(dialog.textContent).toMatch(/one cookie/i)
+    expect(dialog.getAttribute('aria-labelledby')).toBe('privacy-title')
+
+    fireEvent.click(within(container.querySelector('footer')).getByRole('button', { name: 'Privacy' }))
+    expect(showModal).toHaveBeenCalledTimes(1)
   })
 
   it('uses no bird, species or identification language outside the samples', () => {

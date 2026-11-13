@@ -1,7 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useRecorder } from './useRecorder.js'
-import { uploadAudio, captureMic, friendlyError } from './api.js'
+import { uploadAudio, captureMic, friendlyError, getMe, isTryLater } from './api.js'
+
+// Remembers (in this browser only) that the owner has used the Pi mic here, so
+// the "sign in again" hint is shown to them and never to ordinary visitors.
+const OWNER_FLAG = 'echo_pi_mic_owner'
+const flag = {
+  get: () => { try { return localStorage.getItem(OWNER_FLAG) === '1' } catch { return false } },
+  set: () => { try { localStorage.setItem(OWNER_FLAG, '1') } catch { /* private mode */ } },
+}
+
+function signInAgainToast() {
+  toast('Pi mic sign-in expired', {
+    description: 'Sign in again at /me to use the Pi mic.',
+    action: { label: 'Sign in', onClick: () => { window.location.href = '/me' } },
+  })
+}
 
 // Everything that makes a new clip: file upload, browser recording and Pi mic
 // capture. Owned once by App so the desktop header and the phone screens
@@ -12,10 +27,27 @@ import { uploadAudio, captureMic, friendlyError } from './api.js'
 // 'pi_mic', which the clip card uses to say where the clip came from. A toast
 // is raised on every success/failure so nothing fails silently or vaguely
 // (recall the historical "Failed to fetch" issue).
-export function useClipActions({ onStatus, onResult, autoRecord = false }) {
+export function useClipActions({ onStatus, onResult, autoRecord = false, justSignedIn = false }) {
   const fileRef = useRef(null)
   const [captureSecs, setCaptureSecs] = useState('5')
   const [inFlight, setInFlight] = useState(null) // 'upload' | 'capture' | null
+  // The Pi mic button exists only for the signed-in owner (GET /api/me).
+  const [piMic, setPiMic] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    getMe().then(({ pi_mic }) => {
+      if (!live) return
+      setPiMic(pi_mic)
+      if (pi_mic) {
+        flag.set()
+        if (justSignedIn) toast.success('Signed in', { description: 'The Pi mic is available in this browser.' })
+      } else if (flag.get()) {
+        signInAgainToast()
+      }
+    })
+    return () => { live = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runUpload(fileOrBlob, name, kind = 'upload') {
     setInFlight('upload')
@@ -27,8 +59,15 @@ export function useClipActions({ onStatus, onResult, autoRecord = false }) {
       toast.success('Uploaded', { description: name })
     } catch (e) {
       const msg = friendlyError(e)
-      onStatus('error', msg)
-      toast.error('Upload failed', { description: msg })
+      if (isTryLater(e)) {
+        // Busy (503) or over the upload limit (429): nothing is wrong with
+        // the clip, so this is a plain notice, not an error.
+        onStatus('idle')
+        toast(e.status === 429 ? 'Upload limit reached' : 'Echo is busy', { description: msg })
+      } else {
+        onStatus('error', msg)
+        toast.error('Upload failed', { description: msg })
+      }
     } finally {
       setInFlight(null)
     }
@@ -79,8 +118,17 @@ export function useClipActions({ onStatus, onResult, autoRecord = false }) {
       toast.success('Captured', { description: `${captureSecs}s from the Pi mic` })
     } catch (e) {
       const msg = friendlyError(e)
-      onStatus('error', msg)
-      toast.error('Capture failed', { description: msg })
+      if (e?.signedOut) {
+        setPiMic(false)
+        onStatus('idle')
+        signInAgainToast()
+      } else if (isTryLater(e)) {
+        onStatus('idle')
+        toast('Echo is busy', { description: msg })
+      } else {
+        onStatus('error', msg)
+        toast.error('Capture failed', { description: msg })
+      }
     } finally {
       setInFlight(null)
     }
@@ -89,7 +137,7 @@ export function useClipActions({ onStatus, onResult, autoRecord = false }) {
   return {
     recorder, startRecording,
     fileRef, pickFile, onPick,
-    runCapture, captureSecs, setCaptureSecs,
+    runCapture, captureSecs, setCaptureSecs, piMic,
     inFlight,
   }
 }

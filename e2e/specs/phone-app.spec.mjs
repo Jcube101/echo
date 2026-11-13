@@ -10,11 +10,12 @@ test('home → sample → result → back', async ({ page }) => {
   const errors = trackConsoleErrors(page)
   await page.goto('/app')
 
-  // Home: record button, the two secondary actions, four featured samples.
+  // Home: record button, Upload, four featured samples. No Pi mic: that is
+  // the signed-in owner's only (docs/LAUNCH.md §2; launch.spec.mjs E2E-022).
   await expect(page.getByRole('button', { name: 'Record' })).toBeVisible()
   await expect(page.getByText('Tap to record')).toBeVisible()
   await expect(page.getByTitle('Upload an audio or video file')).toBeVisible()
-  await expect(page.getByTitle("Record from the Pi's USB mic")).toBeVisible()
+  await expect(page.getByTitle("Record from the Pi's USB mic")).toHaveCount(0)
   await expect(page.getByTestId('home-sample')).toHaveCount(4)
   await expect(page.locator('canvas')).toHaveCount(0)
 

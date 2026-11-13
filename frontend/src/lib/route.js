@@ -15,6 +15,7 @@ export function wantsAutoRecord(search) {
 //   ?record=1      start the browser recorder straight away
 //   ?sample=<id>   open with that sample loaded ("See its shape")
 //   ?samples=1     open the Samples sheet ("Open the sample library")
+//   ?owner=1       the owner has just signed in at /me (Pi mic sign-in)
 export function appIntent(search) {
   const q = new URLSearchParams(search)
   const sample = q.get('sample')
@@ -22,5 +23,6 @@ export function appIntent(search) {
     record: q.get('record') === '1',
     sample: sample && /^[a-z0-9-]{1,64}$/.test(sample) ? sample : null,
     samples: q.get('samples') === '1',
+    owner: q.get('owner') === '1',
   }
 }

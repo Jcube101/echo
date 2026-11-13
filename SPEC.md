@@ -86,21 +86,48 @@ pts/sec over the analyzed span (unless capped at 3000).
 
 | Method | Path            | Behavior |
 |--------|-----------------|----------|
-| POST   | `/upload`       | Accepts an audio file **or** a browser-recorded blob (same validation). Runs extraction, saves a history row + a transcoded playback copy, returns `{id, features}`. Optional form field `source`: `recording` marks a browser recording; otherwise the clip is an `upload` and its filename is kept (bare name, ≤80 chars) for the history list. The field only labels the clip. |
-| POST   | `/capture`      | Body `{duration}` (≤60). Runs `~/bin/rec`, then the upload pipeline. Returns `{id, features}`. |
-| GET    | `/history`      | List of `{id, created_at, source_type, name, duration_s}`, newest first. `source_type` is `upload`, `recording` or `pi_mic`; `name` is an uploaded file's name, else `null`. |
-| GET    | `/history/{id}` | Full feature JSON + playback audio URL for one clip. |
-| GET    | `/audio/{file}` | Serves the transcoded playback file. |
+| POST   | `/upload`       | Accepts an audio file **or** a browser-recorded blob (same validation). The clip belongs to the uploading browser. Limits: 10 per hour and 30 per day, per browser and per IP (429 with a plain message); one analysis at a time (503 `Echo is busy — try again in a moment.` + `Retry-After: 15` after a 20 s wait). Runs extraction, saves a history row + a transcoded playback copy, returns `{id, features}`. Optional form field `source`: `recording` marks a browser recording; otherwise the clip is an `upload` and its filename is kept (bare name, ≤80 chars) for the history list. The field only labels the clip. |
+| POST   | `/capture`      | **Owner only** (valid Cloudflare Access token, else 404). Body `{duration}` (≤60). Runs `~/bin/rec`, then the upload pipeline. Returns `{id, features}`. |
+| GET    | `/history`      | **This browser's clips only.** List of `{id, created_at, source_type, name, duration_s}`, newest first. `source_type` is `upload`, `recording` or `pi_mic`; `name` is an uploaded file's name, else `null`. |
+| GET    | `/history/{id}` | Full feature JSON + playback audio URL for one clip. 404 unless this browser owns it. Opening a clip restarts its 30-day clock. |
+| DELETE | `/history/{id}` | Owner only: deletes the row, the playback copy and the feature file. 204; 404 for anyone else. |
+| GET    | `/audio/{file}` | Serves the transcoded playback file. 404 unless this browser owns the clip. |
+| GET    | `/me`           | **Owner only.** The sign-in step (Cloudflare Access covers this path); redirects to `/app?owner=1`. 404 without a valid token. |
+| GET    | `/api/me`       | Public. `{"pi_mic": true}` only for a browser with a valid Access token, else `false`. |
+| GET    | `/api/health`   | Public. Exactly `{"ok": true, "status": "ok"}`. |
+| GET    | `/api/schema-audit` | **Owner only.** Current-vs-stale feature-schema report. |
 | GET    | `/samples`      | Curated sample library: list with attribution + metadata. |
 | GET    | `/samples/{id}` | Full feature JSON + audio URL for one sample. |
 | GET    | `/samples/audio/{file}` | Serves a sample's playback file. |
 
-**Schema** — `clips(id, created_at, source_type, source_name, duration_s, feature_path, audio_path, schema_version)`.
+**Schema** — `clips(id, created_at, source_type, source_name, duration_s, feature_path, audio_path, schema_version, owner_id, last_seen_at)`.
+`id` is a full uuid4 hex (32 chars), and the playback file is named after it, so clip and audio URLs are unguessable. `owner_id` is the browser's visitor ID.
 Metadata + file paths only. **Audio blobs are never stored in the DB**
 (locked); audio lives on disk under `data/audio/`.
 
-**Retention (locked):** keep the last **50** entries. On each save beyond 50,
-the oldest entry's DB row **and** its files (audio + features) are deleted.
+**Private history (v1.7):** no accounts. Each browser gets a random `echo_vid`
+cookie (32 hex chars; HttpOnly, Secure, SameSite=Lax, one year, refreshed on
+use) and sees only the clips it made. Another browser's clip is a 404, the same
+answer as a clip that doesn't exist.
+
+**Retention (locked, decision L6):** per browser, the newest **20** clips;
+site-wide, **500** clips or **1 GB** of clip data (playback copies + feature
+files + the DB), whichever comes first, oldest deleted first; and any clip not
+opened for **30 days** is deleted. Each deletion removes the DB row **and** both
+files. Runs on every save, at startup and once a day.
+
+**Owner-only routes (v1.7):** the Pi mic is not public. Cloudflare Access signs
+Job in at `/me`; Echo itself verifies the token (signature, audience, issuer,
+expiry) on every gated request and answers 404 otherwise, including for direct
+LAN requests to port 8014. With no Access settings configured, gated routes are
+always 404.
+
+**Hardening (v1.7):** API docs (`/docs`, `/redoc`, `/openapi.json`) are off
+unless `ECHO_DEV=1`. Every response carries `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: same-origin`, `Permissions-Policy: microphone=(self)` and a
+Content-Security-Policy (own files only, no inline scripts, no eval). Uploads
+must contain an audio stream; every ffprobe/ffmpeg call has a 30 s timeout;
+analysis runs in a separate worker process that is killed after 60 s.
 
 **Storage discipline (locked):** the raw uploaded/recorded audio is processed
 and then **discarded** — only a small transcoded playback copy (opus/mp3) is
@@ -110,7 +137,7 @@ kept. This protects the SD card.
 
 A permanent, curated store under `samples/` (served by the `/samples*`
 endpoints), completely separate from the `clips` table: samples are **never**
-DB rows, so the 50-entry retention cleanup can never evict them. 14 clips
+DB rows, so the retention cleanup can never evict them. 14 clips
 spanning two independent sources: 3 birds (Asian Koel, Common Myna,
 Rose-ringed Parakeet) sourced from `test-fixtures/xeno-canto/` and seeded by
 `verification/seed_samples.py`, plus 11 non-bird animal sounds (Lion, Wolf,

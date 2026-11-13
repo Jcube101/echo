@@ -20,8 +20,9 @@ test('gallery lists uploaded clips and reloads on click', async ({ page }) => {
   await page.getByTitle('Browse past clips').click()
   const dialog = page.getByRole('dialog', { name: /History/ })
   const cards = dialog.getByTestId('history-item')
-  await expect(cards.first()).toBeVisible()
-  expect(await cards.count()).toBeGreaterThanOrEqual(2)
+  // Wait for the count rather than reading it once: the sheet opens showing
+  // the list it already had and refreshes a moment later.
+  await expect(cards).toHaveCount(2)
 
   // Click the second (older) card — the one matching the FIRST upload.
   await cards.nth(1).click()

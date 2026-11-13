@@ -2,7 +2,7 @@
 
 **Living document** — jointly maintained by Job and Claude Code sessions.
 Update status inline as work starts and ships; log notable changes in the
-Changelog at the bottom. Last updated: 2026-11-11.
+Changelog at the bottom. Last updated: 2026-11-13.
 
 Echo turns an audio clip into an interactive 3D trail through
 pitch/timbre/motion space. This roadmap is the build order: each milestone is
@@ -29,6 +29,8 @@ this Pi.
 | v1.x — Polish | 🚧 In progress (1 of 4 items started) |
 | v1.5 — Extended Spectral Analysis Panel | ✅ Shipped (2D panel; 3D cube deferred) |
 | v1.6 — Frontend Redesign (Design v2) | ✅ Shipped (2026-11-12) |
+| v1.7 — Public Launch | 🚧 In progress (built and live 2026-11-13; three checks waiting on Job) |
+| v1.8 — Bring Your Own Pi Mic | 💡 Idea |
 | v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
 
@@ -274,6 +276,53 @@ their font from a CDN, the one part of the app shell that isn't offline
 
 ---
 
+## v1.7 — Public Launch — 🚧 In progress
+
+Full brief and Job's settled decisions (L1–L6): **`docs/LAUNCH.md`**. Make
+`echo.job-joseph.com` safe to share with friends and strangers, with no logins.
+Touches the DB schema (`owner_id`, `last_seen_at` columns) but **not** the
+feature schema — no `FEATURE_SCHEMA_VERSION` bump.
+
+- ✅ **Shipped (live 2026-11-13)** — §1 Private history per browser: `echo_vid`
+  cookie, owner checks on every clip route, `DELETE /history/{id}`, retention
+  of 20 per browser / 500 clips or 1 GB site-wide / 30 days inactive (L6). The
+  44 existing ownerless clips were dropped at deploy (L7, Job's call)
+- 🚧 **In progress** — §2 Pi mic for Job only, via Cloudflare Access (L5).
+  **Built and live:** Echo verifies the Access token itself and fails closed;
+  `/me`, `/api/me`; the Pi mic button shows only for the signed-in owner.
+  **Waiting on Job:** the Access application and `access.env`, then a real
+  recording after signing in at `/me`
+- ✅ **Shipped (live 2026-11-13)** — §3 Protect the Pi: one analysis at a time
+  in a separate worker process with a 60 s kill (503 when busy), upload rate
+  limits (429), ffmpeg timeouts, a locked-down `echo.service` (exposure
+  9.2 → 6.7). `MemoryMax` is inert on this Pi (kernel boots with
+  `cgroup_disable=memory`), so `OOMScoreAdjust=500` is used too. Burst of five
+  60 s uploads on the live unit: 2 processed, 3 friendly 503s, Echo CPU peak
+  131% of a 200% cap, 52 °C, every other service still up
+- ✅ **Shipped (live 2026-11-13)** — §4 Smaller checks: API docs off in
+  production, security headers + CSP, `/api/health` = `{"ok": true,
+  "status": "ok"}` (L9), no IP addresses in Echo's logs, data-cap warning,
+  Privacy dialog. **Waiting on Job:** recording on Android Chrome and on an
+  iPhone; the uptime check; whether to allow Cloudflare Web Analytics in the
+  CSP (it is blocked today)
+
+Everything in `docs/LAUNCH.md` §5 that a session can check passes on the live
+site (`VERIFICATION_LOG.md` Session 16). Final state: pytest 181, Vitest 101,
+Playwright 38, Lighthouse accessibility 100. v1.7 turns ✅ when Job reports the
+`/me` recording, Android Chrome and the iPhone result.
+
+---
+
+## v1.8 — Bring Your Own Pi Mic — 💡 Idea
+
+Design note: **`docs/BYO_PI_MIC.md`**. Starts only after v1.7 ships. Processing
+stays on Job's Pi; the mic becomes a small optional agent anyone can install on
+their own Raspberry Pi and pair with their own browser. `/capture` is retired
+when this lands; the `/me` Access gate stays for owner-only pages. Roughly three
+to four sessions; a smaller upload-only agent is a possible first step.
+
+---
+
 ## v2 — Avian Visitors as a Client of Echo (future) — 📋 Planned
 
 **Reaffirmed decision:** species identification (BirdNET — Cornell's
@@ -348,6 +397,16 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-11-13** — v1.7 Public Launch built and live: private history per
+  browser, new retention (L6), the owner-only gate, the analysis worker
+  process, rate limits, the service lock-down, security headers. Decided
+  (Job): drop the 44 existing clips (L7); Access settings in
+  `~/.config/echo/access.env` (L8); `/api/health` keeps `status` (L9); analysis
+  in a separate process at about 420 MB total; FAQ says "under 15 seconds".
+  Stays 🚧 until Job confirms the `/me` recording and the phone checks.
+- **2026-11-12** — Added v1.7 Public Launch (🚧 in progress, brief in
+  `docs/LAUNCH.md`) and v1.8 Bring Your Own Pi Mic (💡 idea, design note in
+  `docs/BYO_PI_MIC.md`).
 - **2026-11-12** — Shipped v1.6 S5 (tests + docs); **v1.6 Frontend Redesign
   complete.** Follow-ups listed at the end of the v1.6 section.
 - **2026-11-12** — Shipped v1.6 S4 (landing page). Decided (Job): no bird

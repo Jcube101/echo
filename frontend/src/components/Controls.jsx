@@ -15,7 +15,8 @@ const RECORD_BTN =
   'h-11 rounded-full bg-rust px-5 text-[15px] font-semibold text-white shadow-none hover:bg-rust/90 focus-visible:ring-2'
 
 // Pi mic: one outlined tile holding the capture button and its duration chip.
-// Shared by the desktop header and the phone home screen.
+// Shared by the desktop header and the phone home screen. Owner only: both
+// render it only when `actions.piMic` is true (see useClipActions).
 export function PiMicControl({ actions, busy, className = '' }) {
   const { runCapture, captureSecs, setCaptureSecs, inFlight } = actions
   return (
@@ -98,7 +99,7 @@ export default function Controls({ actions, busy }) {
         Upload
       </Button>
 
-      <PiMicControl actions={actions} busy={busy} />
+      {actions.piMic && <PiMicControl actions={actions} busy={busy} />}
     </div>
   )
 }

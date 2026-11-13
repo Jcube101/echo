@@ -26,6 +26,49 @@ open — all for reasons outside app/test code, not failures.
 
 ---
 
+## Public launch additions (v1.7, 2026-11-13)
+
+Added with the launch work (`docs/LAUNCH.md`). Counts after it: **pytest 181
+passed** (was 105), **Vitest 101** (was 84), **Playwright 38** (was 31),
+Lighthouse accessibility 100. The older sections below are unchanged except
+where noted here.
+
+| IDs | File | What they cover |
+|---|---|---|
+| PRIV-001…010 | `tests/test_privacy.py` | The `echo_vid` cookie (flags, refresh, replacement, never on static routes); two browsers can't list, open, play or delete each other's clips (same 404 as a missing clip); `DELETE /history/{id}` removes the row and both files; 32-char IDs; `last_seen_at`; columns added to an old DB; a capture belongs to the browser that asked |
+| RET-001…008 | `tests/test_retention.py` | 20 per browser; 500 clips / 1 GB site-wide, oldest first, across browsers; 30-day inactivity (and that opening a clip resets it); runs at startup, on upload and daily; the 80% warning |
+| ACC-001…010 | `tests/test_access.py` | Owner-only gate: no env → 404; no token → 404; forged, expired, wrong-audience, wrong-issuer, unknown-key and `alg: none` tokens → 404 (header and cookie); a valid test-key token passes; `/api/me`; key caching; key-fetch failure fails closed; the gate runs before body validation |
+| PROT-001…011 | `tests/test_protect.py` | Rate limiter; 429 on `/upload` per browser and per IP; `CF-Connecting-IP` trusted only from localhost; the busy 503 (refunded, server stays responsive); the concurrency clamp; oversize/length-less uploads refused before the body is read; ffmpeg timeouts and `-nostdin`; no-audio files refused before decoding; temp dir always removed |
+| SEC-001…004 | `tests/test_hardening.py` | API docs off unless `ECHO_DEV=1`; security headers on every kind of response; the CSP's contents |
+| WORK-001…006 | `tests/test_worker.py` | The analysis worker process (production's mode): runs in a separate long-lived process; same 422 across the boundary; an overrunning job is killed and the worker replaced with nothing left behind; a worker dying mid-job is a 500 and recovers; stops with the app; process mode is the default |
+| FE-015 + additions | `frontend/src/__tests__/` | `useClipActions.test.jsx` (Pi mic only for the owner, the "sign in again" hint, 503/429 as notices); Gallery delete (two presses) and the browser-only note; `api.test.js` (`getMe`, `deleteClip`, `captureMic` sign-out detection, no `credentials`); Landing FAQ copy and the Privacy dialog; phone home without the Pi mic |
+| E2E-020…025 | `e2e/specs/launch.spec.mjs` | Two browser contexts are isolated (list, open, play, delete; cookieless sees nothing); delete from the History sheet; no Pi mic and no owner route without the sign-in, `/docs` 404; security headers and **zero CSP violations with the 3D view on screen**; 503 and 429 as friendly notices; the Privacy dialog |
+
+**Changed existing tests:** API-019 (health is `{"ok": true, "status": "ok"}`);
+API-020…023 run as the signed-in owner (`signed_in` fixture); API-025 and
+STO-005 know the two new columns; STO-001/002/008/010 lower the site-wide
+count cap (the single limit of 50 is gone); E2E-004 waits for the card count;
+the phone-home and FAQ specs match the new UI.
+
+**How the suite is set up now**
+- Every TestClient uses `https://testserver`, and Playwright uses
+  `http://localhost` (see LEARNINGS.md "Secure cookies and plain-http test hosts").
+- `conftest` sets `ECHO_ANALYSIS_MODE=thread`, so clips are analysed inside the
+  test process and the pipeline can be stubbed. WORK-* and the whole Playwright
+  suite use the real worker process.
+- The Playwright server lifts the upload limits (`ECHO_UPLOADS_PER_HOUR/DAY`).
+- A throwaway RSA key stands in for Cloudflare Access (`access_gate` fixture).
+  No test talks to Cloudflare.
+
+**Hardware tests:** HW-001 (real Pi mic) now needs `ECHO_OWNER_TOKEN` set to
+Job's `CF_Authorization` cookie value; without it the test asserts the 404 and
+skips. HW-001 and HW-006 delete the clip they create.
+
+**Cannot be automated:** a real Cloudflare-signed token (the `/me` sign-in),
+recording on Android Chrome, and recording on an iPhone. All three are Job's.
+
+---
+
 ## Design v2 additions (v1.6, 2026-11-12)
 
 The frontend redesign (DESIGN_V2.md, sessions S1–S5) added the tests below.

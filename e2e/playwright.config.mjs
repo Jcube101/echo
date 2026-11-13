@@ -5,7 +5,10 @@ import { TONE_WAV } from './fixtures-path.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.ECHO_E2E_PORT || '8091'
-const BASE_URL = `http://127.0.0.1:${PORT}`
+// "localhost", not 127.0.0.1: the echo_vid cookie is Secure, and Chromium sends
+// a Secure cookie over plain http only to the hostname localhost. On 127.0.0.1
+// every request would arrive without it and look like a brand-new browser.
+const BASE_URL = `http://localhost:${PORT}`
 
 // Every E2E-* spec here is sandboxed (localhost, temp data dir, synthetic
 // audio) — none needs the real mic, sudo, or the public tunnel, so none is

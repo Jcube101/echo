@@ -100,8 +100,9 @@ The API is then at `http://localhost:8014`. Key endpoints:
 | Method | Path                    | Purpose                                          |
 |--------|-------------------------|--------------------------------------------------|
 | POST   | `/upload`               | Audio file or recorded blob → `{id, features}`   |
-| POST   | `/capture`              | Record `duration` s on the Pi mic → same result  |
-| GET    | `/history`              | List recent clips (id, timestamp, source, len)   |
+| POST   | `/capture`              | Owner only: record on the Pi mic → same result   |
+| GET    | `/history`              | This browser's clips (id, timestamp, source, len)|
+| DELETE | `/history/{id}`         | Delete one of this browser's clips               |
 | GET    | `/history/{id}`         | Full feature JSON + playback audio URL           |
 | GET    | `/audio/{file}`         | Transcoded playback audio                         |
 | GET    | `/samples`              | List curated samples (attribution + metadata)    |

@@ -1,6 +1,6 @@
 # Echo — Public launch brief (Session 6)
 
-**Status:** 📋 Planned · **Goal:** make `echo.job-joseph.com` safe to share with
+**Status:** 🚧 Built and live 2026-11-13; waiting on Job for the Access setup, the `/me` recording and the phone checks (results: `VERIFICATION_LOG.md` Session 16) · **Goal:** make `echo.job-joseph.com` safe to share with
 friends and strangers, with no logins.
 **Order:** do this **before** the "Bring your own Pi mic" work (`docs/BYO_PI_MIC.md`).
 
@@ -19,6 +19,9 @@ the feature schema — no `FEATURE_SCHEMA_VERSION` bump, no `migrate_schema.py`.
 | L4 | Protect the Pi: it also runs JARVIS and other services, so Echo must never be able to starve them. |
 | L5 | **Pi mic gate = Cloudflare Access (option a).** Home-network-only (option b) was considered and rejected: it doesn't work away from home and lets anyone on the Wi-Fi trigger the mic. |
 | L6 | **Retention changes** from a global 50 to: **20 per browser**, **500 clips or 1 GB site-wide** (whichever first), and **30-day inactivity** deletion. Job has approved updating the Locked Decision row in CLAUDE.md. |
+| L7 | **Existing clips are dropped, not claimed** (plan review, 2026-11-12). No `claim_clips.py`. At deploy, every clip with `owner_id IS NULL` is deleted (rows + audio + feature files): print the count first, then delete, and log it in `VERIFICATION_LOG.md`. Samples are untouched. |
+| L8 | **Access settings live in `/home/jcube/.config/echo/access.env`** (plan review, 2026-11-12): outside the repo, `chmod 600`, read by the unit's `EnvironmentFile=-…`. Job fills it in; no sudo needed to edit it. |
+| L9 | **`/api/health` stays backward-compatible** (plan review, 2026-11-12): `{"ok": true, "status": "ok"}`. |
 
 ---
 
@@ -59,9 +62,9 @@ the feature schema — no `FEATURE_SCHEMA_VERSION` bump, no `migrate_schema.py`.
   startup and once a day (a systemd timer, or a check on each upload).
 - Update CLAUDE.md's "History retention" row to match (approved by Job, decision L6).
 
-**Existing clips:** add a one-off admin script `claim_clips.py <visitor_id>` that
-assigns every `owner_id IS NULL` clip to Job's browser ID. Job copies his ID from
-the browser's cookie. Anything left unclaimed after launch is deleted.
+**Existing clips (decision L7):** dropped at deploy. Every clip with
+`owner_id IS NULL` is deleted (rows + audio + feature files) after printing the
+count, and the count is logged in `VERIFICATION_LOG.md`. Samples are untouched.
 
 **UI**
 
@@ -83,8 +86,10 @@ the browser's cookie. Anything left unclaimed after launch is deleted.
 2. Policy: **Allow**, include **Emails** = Job's email only. Login method: one-time PIN.
 3. Session duration: **1 month**.
 4. Copy the application's **AUD tag** and the team domain
-   (`<team>.cloudflareaccess.com`) into Echo's environment (`ECHO_CF_ACCESS_AUD`,
-   `ECHO_CF_TEAM_DOMAIN`) — put them in the systemd unit, never in git.
+   (`<team>.cloudflareaccess.com`) into `/home/jcube/.config/echo/access.env`
+   (`ECHO_CF_ACCESS_AUD`, `ECHO_CF_TEAM_DOMAIN`; decision L8). The unit reads it
+   with `EnvironmentFile=`; it is outside the repo, never in git. Then
+   `sudo -n systemctl restart echo`.
 
 Claude Code writes these steps into the end-of-session checklist and does not
 attempt them.
@@ -140,7 +145,10 @@ attempt them.
 - Runs as `jcube`, never root (confirm).
 - Add: `NoNewPrivileges=yes`, `PrivateTmp=yes`, `ProtectSystem=strict`,
   `ProtectHome=read-only`, `ReadWritePaths=/home/jcube/projects/echo/data`,
-  `MemoryMax=1G`, `CPUQuota=200%` (leaves headroom for JARVIS on the Pi 5's 4 cores).
+  `MemoryMax=1G`, `CPUQuota=200%` (leaves headroom for other services on the Pi 5's 4 cores).
+  *Found during the build:* this Pi's kernel boots with `cgroup_disable=memory`, so
+  `MemoryMax` is inert here; the unit also sets `OOMScoreAdjust=500` so Echo is
+  killed (and restarted) first under memory pressure. `CPUQuota` works.
 - `/capture` needs `~/bin/rec` and the audio device. Check it still works under
   these settings (it may need `DeviceAllow=` / group `audio`). If it can't, ask Job.
 - Install with the existing sudo pattern: write to `/tmp/echo.service`, then
@@ -153,7 +161,8 @@ attempt them.
 - Turn off FastAPI's `/docs`, `/redoc` and `/openapi.json` in production
   (`docs_url=None, redoc_url=None, openapi_url=None` unless `ECHO_DEV=1`).
 - `/api/schema-audit`: behind the same Access gate (Job only).
-- `/api/health`: keep public, but return only `{"ok": true}`.
+- `/api/health`: keep public, but return only `{"ok": true, "status": "ok"}`
+  (decision L9: `status` kept for existing checks).
 - Security headers on every response: `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: same-origin`, `Permissions-Policy: microphone=(self)`,
   and a CSP that allows self + `blob:` media + the WebGL/worker needs of R3F.
@@ -176,8 +185,12 @@ attempt them.
 - Per-browser, global and 30-day retention are covered by pytest.
 - Without a valid Access JWT (any network, including direct LAN to :8014), the Pi mic
   button is hidden and `POST /capture` → 404. After signing in at `/me`, it records.
-- Firing 5 uploads at once gives 1–2 processed and the rest a friendly 503, with
-  JARVIS still responsive. Hitting the rate limit gives a 429.
+- Firing 5 uploads at once gives 1–2 processed and the rest a friendly 503, and
+  the Pi stays healthy for other services during the burst: Echo's CPU stays
+  ≤200% (the `CPUQuota` works); cloudflared and every other enabled project
+  service stay active (`systemctl is-active`); load average and CPU temperature
+  stay sane (temp under 70 °C); a quick request to one other tunnelled site still
+  answers within a couple of seconds. Hitting the rate limit gives a 429.
 - `/docs` → 404 in production. Security headers are present.
 - Recording works on Android Chrome, and the iPhone result is noted.
 - ROADMAP.md, CLAUDE.md (retention row, with Job's OK), VERIFICATION_LOG.md and

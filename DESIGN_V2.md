@@ -192,7 +192,7 @@ name, duration, provider, play icon) with "All 14 samples →", the same FAQ
     browser", "Uploaded · filename", "Pi microphone"), duration, date.
   - *At the playhead* — Pitch, Timbre, Motion as small −3…+3 sliders (read-only)
     with mono values, plus Loudness %.
-  - *Recent clips* — the latest three from `/history`, "All 50" opens the History sheet.
+  - *Recent clips* — the latest three from `/history`, "All N" (at most 20, this browser's own) opens the History sheet.
 
 ### 4.4 App — desktop, Spectral panel
 
@@ -262,17 +262,23 @@ Hover for exact values."
 3. **What can I put in?** Record up to 60 seconds in your browser, or upload MP3,
    WAV, M4A, Opus, or a video file, up to 20 MB.
 4. **How long does it take?** A few seconds for most clips. Even a full minute is
-   ready in under ten seconds.
-5. **Is my audio kept?** Only a small copy for playback. The original file is
-   discarded after analysis, the mic is never left on, and History keeps your last
-   50 clips.
+   ready in under 15 seconds.
+5. **Is my audio kept?** Only a small copy for playback, and only this browser
+   can see it. The original file is discarded after analysis, and clips you
+   haven’t opened in 30 days are deleted.
 6. **Can I compare two sounds?** Yes, by eye. Every clip is drawn in the same fixed
    box, so a high note sits high in every one of them.
 7. **Where do the sample sounds come from?** Xeno-canto and Freesound, used under
    Creative Commons licences. Each sample shows its recordist and licence.
 
-If any limit in this copy changes (60 s, 20 MB, 50 clips, speed), update the copy
-in the same change.
+The footer's **Privacy** dialog repeats answer 5 word for word, then adds: there
+are no accounts; one cookie holds a random ID so your clips are yours alone; the
+browser microphone is used only while recording.
+
+If any limit in this copy changes (60 s, 20 MB, the 30-day rule, speed), update
+the copy in the same change. History keeps each browser's newest 20 clips
+(`docs/LAUNCH.md`, decision L6); the History sheet says "Your clips live in this
+browser only."
 
 ---
 

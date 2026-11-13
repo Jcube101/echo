@@ -26,7 +26,8 @@ describe('wantsAutoRecord', () => {
 
 describe('appIntent', () => {
   it('reads record, sample and samples from the query string', () => {
-    expect(appIntent('')).toEqual({ record: false, sample: null, samples: false })
+    expect(appIntent('')).toEqual({ record: false, sample: null, samples: false, owner: false })
+    expect(appIntent('?owner=1')).toMatchObject({ owner: true })
     expect(appIntent('?record=1')).toMatchObject({ record: true })
     expect(appIntent('?sample=asian-koel')).toMatchObject({ sample: 'asian-koel' })
     expect(appIntent('?samples=1')).toMatchObject({ samples: true })

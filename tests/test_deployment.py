@@ -120,8 +120,20 @@ def test_HW_001_real_pi_mic_capture():
     If this fails with "audio open error" (ALSA card shift), that is Job's
     fix per CLAUDE.md — this test asserts-and-surfaces the failure, it does
     NOT retry or attempt any workaround.
+
+    Since the public launch /capture is owner-only (docs/LAUNCH.md §2): it
+    needs a real Cloudflare Access token, which only Job's signed-in browser
+    has. To run this, copy the `CF_Authorization` cookie value from that
+    browser into ECHO_OWNER_TOKEN. Without it the test is skipped (and the
+    route's 404 for everyone else is asserted).
     """
-    res = httpx.post(f"{LIVE_BASE_URL}/capture", json={"duration": 3}, timeout=30.0)
+    token = os.environ.get("ECHO_OWNER_TOKEN")
+    if not token:
+        res = httpx.post(f"{LIVE_BASE_URL}/capture", json={"duration": 3}, timeout=30.0)
+        assert res.status_code == 404, "/capture must be 404 without an Access token"
+        pytest.skip("owner-only: set ECHO_OWNER_TOKEN to Job's CF_Authorization cookie value")
+    res = httpx.post(f"{LIVE_BASE_URL}/capture", json={"duration": 3}, timeout=30.0,
+                     headers={"Cf-Access-Jwt-Assertion": token})
     assert res.status_code == 200, (
         f"capture failed ({res.status_code}): {res.text[:300]} — "
         "if this is an ALSA card-shift ('audio open error'), that's Job's "
@@ -131,8 +143,14 @@ def test_HW_001_real_pi_mic_capture():
     assert data["features"]
     assert data["duration_s"] == pytest.approx(3.0, abs=1.0)
 
-    hist = httpx.get(f"{LIVE_BASE_URL}/history", timeout=10.0).json()
+    # History is per browser: ask with the visitor cookie the capture was given
+    # (sent by hand: httpx won't return a Secure cookie over plain http), then
+    # delete the clip so the check leaves nothing behind.
+    cookie = {"Cookie": f"echo_vid={res.cookies['echo_vid']}"}
+    hist = httpx.get(f"{LIVE_BASE_URL}/history", timeout=10.0, headers=cookie).json()
     assert any(r["id"] == data["id"] and r["source_type"] == "pi_mic" for r in hist)
+    assert httpx.delete(f"{LIVE_BASE_URL}/history/{data['id']}", timeout=10.0,
+                        headers=cookie).status_code == 204
 
 
 @pytest.mark.requires_sudo
@@ -229,8 +247,9 @@ def test_HW_006_public_upload_within_edge_budget(audio_factory):
     Cloudflare-524 regression the pyin speed fix bought margin against).
 
     Side effect (accepted by Job, 2026-07-18, per TEST_PLAN.md): adds one
-    real clip to production history; it ages out via the normal 50-entry
-    retention rule, the same accepted side effect as Session 5's checks.
+    real clip to production. Since the public launch it belongs to this
+    test's throwaway visitor ID (no browser can see it) and is deleted at the
+    end of the test. Counts as one upload against this machine's hourly limit.
 
     LEARNINGS.md: "Cloudflare's edge enforces a ~100s origin-response limit
     (HTTP 524) on the free plan, and it is not configurable."
@@ -246,3 +265,6 @@ def test_HW_006_public_upload_within_edge_budget(audio_factory):
     assert res.status_code == 200, f"public upload failed ({res.status_code}): {res.text[:300]}"
     assert elapsed < 90.0, f"round-trip took {elapsed:.1f}s — too close to the ~100s edge limit"
     assert res.json()["features"]
+    deleted = httpx.delete(f"{PUBLIC_BASE_URL}/history/{res.json()['id']}", timeout=15.0,
+                           cookies={"echo_vid": res.cookies["echo_vid"]})
+    assert deleted.status_code == 204

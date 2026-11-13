@@ -25,7 +25,12 @@ DB_PATH = DATA_DIR / "echo.sqlite"
 for _d in (DATA_DIR, AUDIO_DIR, FEATURES_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
-RETENTION_LIMIT = 50  # keep the last N clips; oldest evicted on save beyond N
+# Retention (docs/LAUNCH.md §1, decision L6; CLAUDE.md Locked Decisions).
+RETENTION_PER_OWNER = 20            # newest N clips kept per browser
+RETENTION_GLOBAL_CLIPS = 500        # site-wide cap on clip count…
+RETENTION_GLOBAL_BYTES = 1024 ** 3  # …or 1 GB of clip data, whichever first
+RETENTION_INACTIVE_DAYS = 30        # clips not opened for this long are deleted
+RETENTION_WARN_FRACTION = 0.8       # log a warning past 80% of either global cap
 
 
 class Base(DeclarativeBase):
@@ -51,6 +56,15 @@ class Clip(Base):
     # schema audit treats it as stale until re-migrated. The JSON payload carries
     # the authoritative copy; this column is the cheap index the audit reads.
     schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The browser that made this clip: its `echo_vid` cookie (visitor.py,
+    # docs/LAUNCH.md §1). Every clip route matches on it, so only that browser
+    # can list, open, play or delete the clip. NULL = a row written before
+    # ownership existed; nobody can see those (they were dropped at launch, L7).
+    owner_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # When the clip was made or last opened (GET /history/{id}); the 30-day
+    # inactivity rule reads it.
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, default=lambda: datetime.now(timezone.utc))
 
     def to_summary(self) -> dict:
         return {
@@ -80,7 +94,10 @@ def _ensure_columns() -> None:
     one, so an already-deployed clips table (e.g. the Pi's 35 rows) won't get
     `schema_version` from the model alone. This adds it in place if missing;
     existing rows get NULL (stale) until the migration stamps them. Same for
-    `source_name` (NULL simply means "no filename known"). Idempotent.
+    `source_name` (NULL simply means "no filename known"), and for `owner_id`
+    (NULL = nobody's clip, invisible to every browser). `last_seen_at` starts
+    at "now" for existing rows, so adding the column can never make the
+    inactivity rule delete anything on the spot. Idempotent.
     """
     with engine.begin() as conn:
         cols = [row[1] for row in
@@ -91,3 +108,12 @@ def _ensure_columns() -> None:
         if cols and "source_name" not in cols:
             conn.exec_driver_sql(
                 "ALTER TABLE clips ADD COLUMN source_name VARCHAR")
+        if cols and "owner_id" not in cols:
+            conn.exec_driver_sql("ALTER TABLE clips ADD COLUMN owner_id VARCHAR")
+        if cols and "last_seen_at" not in cols:
+            conn.exec_driver_sql("ALTER TABLE clips ADD COLUMN last_seen_at DATETIME")
+            conn.exec_driver_sql("UPDATE clips SET last_seen_at = CURRENT_TIMESTAMP")
+        if cols:
+            # create_all only indexes a table it creates itself.
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_clips_owner_id ON clips (owner_id)")

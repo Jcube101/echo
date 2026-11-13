@@ -1680,3 +1680,89 @@ Lighthouse was not re-run (the landing page did not change).
   visible to anyone (see LEARNINGS.md).
 - The new icon reaches an already-installed PWA only when the phone refreshes
   its manifest; reinstalling shows it at once.
+
+---
+
+# Session 16 — Public launch, v1.7 (2026-11-12 → 13)
+
+Brief: `docs/LAUNCH.md` (§1–4, done-when list in §5). Built in verified steps,
+each approved by Job before the next. The feature schema did not change: no
+`FEATURE_SCHEMA_VERSION` bump, no `migrate_schema.py`.
+
+## What changed
+
+| Area | Change |
+|---|---|
+| Service | `echo.service` locked down (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome=read-only`, `ReadWritePaths=…/data`, `CPUQuota=200%`, `MemoryMax=1G`, `OOMScoreAdjust=500`, `UMask=0027`, and a few more); `--no-access-log --no-proxy-headers`; `NUMBA_CACHE_DIR` under `data/`; `EnvironmentFile=-/home/jcube/.config/echo/access.env`. Installed with `/tmp/echo.service` + `sudo -n cp`, `daemon-reload`, `restart` |
+| Private history | `visitor.py` (`echo_vid` cookie); `clips.owner_id` + `last_seen_at` via `_ensure_columns()`; full uuid4 clip IDs; owner checks on `/history`, `/history/{id}`, `/audio/{file}`; new `DELETE /history/{id}` |
+| Retention | 20 per browser, 500 clips / 1 GB site-wide, 30 days inactive; on every save, at startup, daily; warning past 80% of a cap |
+| Owner gate | `access.py`: Cloudflare Access JWT verified by Echo (RS256, audience, issuer, expiry; keys cached); `/capture`, `/me`, `/api/schema-audit` gated, 404 otherwise; public `/api/me` |
+| Protect the Pi | One analysis at a time in a separate worker process (`analysis_worker.py`, 60 s kill); 503 after a 20 s wait; `ratelimit.py` (10/h, 30/day per browser and per IP); upload guard before the body is read; ffprobe audio-stream check; 30 s ffmpeg timeouts, `-nostdin` |
+| Smaller checks | API docs off unless `ECHO_DEV=1`; `/api/health` = `{"ok": true, "status": "ok"}`; security headers + CSP on every response |
+| Frontend | History: "Your clips live in this browser only." + delete; Pi mic only for the signed-in owner; 503/429 as plain notices; FAQ answer replaced; Privacy dialog; "under 15 seconds" (Job) |
+
+## Results
+
+| Check | Result |
+|---|---|
+| `pytest` (default run) | **181 passed**, 6 deselected (new: PRIV, RET, ACC, PROT, SEC, WORK) |
+| Vitest | **101 passed** |
+| Playwright | **38 passed, 0 failed** (new: `launch.spec.mjs`, E2E-020…025) |
+| Lighthouse accessibility (landing) | **100** mobile, **100** desktop |
+| `systemd-analyze security echo` | 9.2 UNSAFE → **6.7 MEDIUM** |
+
+## LAUNCH.md §5, item by item (live service, 2026-11-13)
+
+| §5 item | Result | How |
+|---|---|---|
+| Two browsers can't see, open or play each other's clips | **Pass** | Playwright, two contexts, against `https://echo.job-joseph.com`: each lists only its own clip; the other's `GET /history/{id}`, `GET /audio/{file}` and `DELETE` are 404; a cookieless context sees nothing. Also E2E-020 and PRIV-004 |
+| Delete works, files gone from disk | **Pass** | Deleted in the live History sheet: clip and audio 404 afterwards; `data/audio` and `data/features` empty after all test clips were deleted. Also PRIV-005, E2E-021 |
+| Per-browser, global and 30-day retention covered by pytest | **Pass** | RET-001…008 |
+| No valid Access JWT → Pi mic hidden, `POST /capture` 404, any network | **Pass** | Public URL and direct LAN `http://<pi>:8014`: `/capture`, `/me`, `/api/schema-audit` all 404, with and without a made-up token header; `/api/me` false; no Pi mic button |
+| …after signing in at `/me`, it records | **Not yet verifiable** | Needs Job's Cloudflare Access setup. The gate's accept path is covered with a test key (ACC-005) |
+| 5 uploads at once → 1–2 processed, rest a friendly 503 | **Pass** | Five 60 s clips on the real unit: 2 processed (11.7 s, 23.0 s), 3 × 503 "Echo is busy — try again in a moment." at 20 s |
+| The Pi stays healthy during the burst | **Pass** | Echo CPU peak 131%, mean 89% (cap 200%); CPU temp 50.7 → 52.4 °C; all 41 running services still running, cloudflared active, none failed; `status.job-joseph.com` answered 200 in 1.3–2.3 s four times; Echo's own health check max 24 ms. 1-minute load peaked at 2.12 on 4 cores (the test suites had just run) |
+| Hitting the rate limit gives a 429 | **Pass** | Live: the 11th counted upload → 429 "You've reached the upload limit (10 per hour). Try again in about 59 minutes.", `Retry-After: 3561` |
+| `/docs` → 404 in production; security headers present | **Pass** | Public URL: `/docs`, `/redoc`, `/openapi.json` 404; the four headers on `/`, `/app`, `/api/health` and a 404 |
+| Recording works on Android Chrome; iPhone result noted | **Not yet verifiable** | Needs Job's phones |
+| Docs updated | **Done** | ROADMAP, CLAUDE.md (retention row + launch guardrails), SPEC, TEST_PLAN, LEARNINGS, README, this log |
+
+## Decision L7: existing clips dropped at deploy
+
+Printed before deleting: `clips in DB: 44; with owner_id IS NULL: 44 (88 files
+on disk)`. After: `clips in DB: 0 | audio files: 0 | feature files: 0`. The 44
+were the 42 clips from before this session plus 2 made by this session's own
+step-1 checks (one upload, one 2 s Pi capture). The 14 samples were not touched
+(`samples/` has no changes).
+
+## Measured along the way
+
+| Measurement | Result |
+|---|---|
+| Real 2 s Pi mic capture through `~/bin/rec` under the new sandbox | 200 in 2.9 s, 101 frames (before the gate closed `/capture`) |
+| Slowest health check during a 60 s clip: thread → worker process | 5,055 ms → 56 ms |
+| 60 s clip, end to end | 11.4–13.4 s |
+| Memory: web process / worker / Python helper (live, after start) | 90 MB / 266 MB / 11 MB; about 420 MB after a long clip |
+| Cold numba cache, first analysis | 24 s (pre-warmed; 3.4 s warm) |
+
+## Known limits and open points
+
+- **Cloudflare Web Analytics is blocked by the CSP.** The zone injects
+  `static.cloudflareinsights.com/beacon.min.js`; the browser refuses it and
+  logs one console error per page load. Nothing visible breaks. Job to decide:
+  allow it in the CSP or stop injecting it for this hostname.
+- **`MemoryMax=1G` is inert** on this Pi (`cgroup_disable=memory`).
+  `OOMScoreAdjust=500` and `CPUQuota=200%` are what's in force.
+- **Journald has no time limit** (size-capped at 1 GB). Echo no longer logs IP
+  addresses or visitor IDs, but "14 days at most" needs a system setting
+  outside the sudo allowlist.
+- **The Pi mic is off for everyone, Job included,** until the Access setup is
+  done and `access.env` is filled in.
+- **Direct LAN browsing** (`http://<pi>:8014`) keeps no history: the cookie is
+  Secure. Only the tunnel URL is supported.
+- The live DB gained the two new columns during development, not at deploy:
+  the test suite's audit of real data runs `init_db()` (see LEARNINGS.md).
+- The local rate-limit bucket for `127.0.0.1` was used up by the live checks;
+  it clears an hour later or on restart, and visitors through the tunnel are
+  counted by their own address.
+

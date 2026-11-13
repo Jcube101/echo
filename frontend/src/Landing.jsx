@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import {
   ArrowRight, ExternalLink, Library, ListMusic, Mic, Move3d, Play, Plus, Upload,
 } from 'lucide-react'
@@ -25,6 +25,10 @@ const FEATURED_IDS = ['asian-koel', 'lion-roar', 'wolf-howl', 'cricket-chirp']
 const FEATURED = FEATURED_IDS.map((id) => SAMPLES.find((s) => s.id === id)).filter(Boolean)
 const OTHERS = SAMPLES.filter((s) => !FEATURED.includes(s))
 
+// One wording for "what happens to my audio", used by the FAQ and the Privacy
+// dialog (docs/LAUNCH.md §1 and §4). Change it in DESIGN_V2.md §5 too.
+const KEPT = 'Only a small copy for playback, and only this browser can see it. The original file is discarded after analysis, and clips you haven’t opened in 30 days are deleted.'
+
 const FAQ = [
   ['What am I looking at?',
     'Each point is one moment of sound, about fifty every second. Where it sits shows its pitch (high or low), timbre (bright or dark) and motion (steady or busy). Bigger, brighter points are louder.'],
@@ -33,9 +37,9 @@ const FAQ = [
   ['What can I put in?',
     'Record up to 60 seconds in your browser, or upload MP3, WAV, M4A, Opus, or a video file, up to 20 MB.'],
   ['How long does it take?',
-    'A few seconds for most clips. Even a full minute is ready in under ten seconds.'],
+    'A few seconds for most clips. Even a full minute is ready in under 15 seconds.'],
   ['Is my audio kept?',
-    'Only a small copy for playback. The original file is discarded after analysis, the mic is never left on, and History keeps your last 50 clips.'],
+    KEPT],
   ['Can I compare two sounds?',
     'Yes, by eye. Every clip is drawn in the same fixed box, so a high note sits high in every one of them.'],
   ['Where do the sample sounds come from?',
@@ -363,10 +367,42 @@ function Closing() {
   )
 }
 
+// Footer "Privacy": a native <dialog> (focus trap, Escape and a labelled close
+// button come with showModal), so the landing page needs no dialog library.
+function PrivacyDialog({ dialogRef }) {
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="privacy-title"
+      onClick={(e) => { if (e.target === e.currentTarget) e.currentTarget.close() }}
+      className="w-[min(34rem,calc(100vw-2rem))] rounded-2xl border border-paper-line bg-paper p-0 text-ink shadow-xl backdrop:bg-ink/50"
+    >
+      <div className="p-6 sm:p-8">
+        <h2 id="privacy-title" className="font-display text-2xl font-semibold text-ink">Privacy</h2>
+        <div className="mt-4 space-y-3 text-[15px] leading-relaxed text-ink-2">
+          <p><strong className="font-semibold text-ink">Is my audio kept?</strong> {KEPT}</p>
+          <p>
+            There are no accounts. Echo puts one cookie in your browser, a random ID, so that your
+            clips are yours alone. It isn’t used to track you, and you can delete any clip from History.
+          </p>
+          <p>Your browser’s microphone is used only while you are recording.</p>
+        </div>
+        <form method="dialog" className="mt-6 flex justify-end">
+          <button className={'inline-flex min-h-11 items-center rounded-full bg-ink px-5 text-sm font-semibold text-paper focus-visible:ring-rust ' + FOCUS}>
+            Close
+          </button>
+        </form>
+      </div>
+    </dialog>
+  )
+}
+
 function Footer() {
   const LINK = 'inline-flex min-h-11 items-center rounded hover:text-ink focus-visible:ring-rust ' + FOCUS
+  const privacy = useRef(null)
   return (
     <footer className="border-t border-paper-line">
+      <PrivacyDialog dialogRef={privacy} />
       <div className={WRAP + ' flex flex-col gap-5 py-10 sm:flex-row sm:items-start sm:justify-between'}>
         <div>
           <div className="font-display text-xl font-semibold text-ink">Echo</div>
@@ -377,6 +413,7 @@ function Footer() {
         <nav aria-label="Footer" className="flex gap-6 text-sm text-ink-3 sm:-mt-2.5">
           <a href="#how-it-works" className={LINK}>About</a>
           <a href={LIBRARY} className={LINK}>Credits</a>
+          <button type="button" onClick={() => privacy.current?.showModal()} className={LINK}>Privacy</button>
           <a href="https://job-joseph.com" className={LINK}>job-joseph.com</a>
         </nav>
       </div>

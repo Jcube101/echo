@@ -4,7 +4,7 @@ Operational guide for Claude Code sessions in this repo. These rules are
 binding in every session, not just the initial build.
 
 **Living document** — jointly maintained by Job and Claude Code sessions.
-Last updated: 2026-11-12.
+Last updated: 2026-11-13.
 
 ---
 
@@ -65,8 +65,8 @@ section is explicitly in scope for the session.
 | Max upload size | 20 MB (server-side enforced, clear error beyond it) |
 | Max clip duration | 60 seconds (all input paths) |
 | Stored audio | Raw upload processed then discarded; only a small transcoded playback copy (opus/mp3) is kept |
-| History retention | Last 50 entries; oldest entry's files + DB row deleted on each save beyond 50 |
-| Sample library exception | `samples/audio/*.opus` are a deliberate, permanent exception to the discard rule above — committed to git as product assets, never a `clips` DB row, never subject to the 50-entry retention rule |
+| History retention | Per browser: newest **20** clips. Site-wide: **500** clips or **1 GB** of clip data, whichever comes first (oldest deleted first). Inactivity: clips not opened for **30 days** are deleted. Each deletion removes the DB row and both files. Runs on every save, at startup and once a day (decision L6 in `docs/LAUNCH.md`, approved by Job 2026-11-12; replaces the earlier single limit of 50) |
+| Sample library exception | `samples/audio/*.opus` are a deliberate, permanent exception to the discard rule above — committed to git as product assets, never a `clips` DB row, never subject to the retention rules above |
 
 The root `package.json` exists solely for Playwright verification tooling —
 the app frontend lives in `frontend/` with its own `package.json`.
@@ -162,6 +162,39 @@ stored feature JSONs or migrate with a one-off script — go through
 `migrate_schema.py` so the version stamp and DB column stay consistent. The audit
 + migration runner live at the repo root on purpose (`verification/` is
 gitignored). See `LEARNINGS.md` "Session 6 — feature-schema versioning".
+
+## Public-Launch Guardrails (v1.7, `docs/LAUNCH.md`)
+
+Echo is public, with no logins. These hold in every later session:
+
+- **Every clip route is scoped to the browser's `echo_vid` cookie**
+  (`visitor.py`). Any new route that reads, lists, serves or deletes a clip
+  must go through the owner check (`_owned_clip` in `main.py`) and answer
+  **404, never 403**, for someone else's clip. Never filter on a visitor ID
+  that could be `None` (it would match unowned rows).
+- **Never log a visitor ID, and never store or log one next to an IP
+  address.** The unit runs uvicorn with `--no-access-log` for this reason.
+- **Owner-only routes** (`/capture`, `/me`, `/api/schema-audit`, and any
+  future one) use `Depends(access.require_owner)`: a valid Cloudflare Access
+  token or 404. It must stay **fail-closed** when `ECHO_CF_ACCESS_AUD` /
+  `ECHO_CF_TEAM_DOMAIN` are unset. Those two values live only in
+  `/home/jcube/.config/echo/access.env` (outside the repo, `chmod 600`) —
+  never in git, never printed in a report.
+- **Heavy work goes through `_analyse()`** (one at a time, in the analysis
+  worker process, with the 60 s kill). Don't call `process_audio` from a
+  route directly, and don't run ffmpeg/librosa in the web process.
+- **`/upload` keeps its guard**: size, rate limit and Content-Length are
+  checked before the body is read. `CF-Connecting-IP` is trusted only from
+  localhost; the unit's `--no-proxy-headers` is part of that.
+- **The CSP is tested in a real browser** (`e2e/specs/launch.spec.mjs`,
+  E2E-023). Change `CONTENT_SECURITY_POLICY` only with that spec passing;
+  pytest alone can't see a policy that blanks the 3D view.
+- **`echo.service` is sandboxed** (read-only home, writes only under
+  `data/`). Anything Echo needs to write must live under `data/`. On this Pi
+  `MemoryMax` is inert (`cgroup_disable=memory`); `OOMScoreAdjust=500` and
+  `CPUQuota=200%` are what actually protect other services.
+- The end-to-end suite must run on `http://localhost`, not `127.0.0.1`
+  (Chromium sends the Secure cookie over plain http only to `localhost`).
 
 ## Other Standing Guardrails
 

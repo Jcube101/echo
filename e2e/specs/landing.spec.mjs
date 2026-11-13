@@ -41,11 +41,13 @@ test('FAQ: seven questions, all closed by default, open on click', async ({ page
   await expect(items).toHaveCount(7)
   expect(await page.locator('#faq details[open]').count()).toBe(0)
 
-  const q = page.getByText('Is my audio kept?')
+  // Scoped to the FAQ: the footer's Privacy dialog repeats this answer.
+  const faq = page.locator('#faq')
+  const q = faq.getByText('Is my audio kept?')
   await q.click()
-  await expect(page.getByText(/Only a small copy for playback/)).toBeVisible()
+  await expect(faq.getByText(/Only a small copy for playback, and only this browser/)).toBeVisible()
   await q.click()
-  await expect(page.getByText(/Only a small copy for playback/)).toBeHidden()
+  await expect(faq.getByText(/Only a small copy for playback/)).toBeHidden()
 })
 
 test('"See its shape" opens the app with that sample loaded', async ({ page }) => {

@@ -389,6 +389,56 @@ any of the three axes, not sample-library-specific.
 
 ---
 
+### Session 16 — public launch (v1.7, 2026-11-12/13)
+
+Brief and Job's decisions L1–L9: `docs/LAUNCH.md`. What was decided while building it:
+
+**Analysis runs in its own process (Job chose "option B").** Putting the
+pipeline in a worker *thread* stopped uploads freezing the server outright, but
+one health check still took **5.1 s** during a 60 s clip: part of the pitch
+analysis holds Python's global lock, and every other request waits for it. In a
+separate long-lived process (`analysis_worker.py`) the worst health check during
+the same clip is **56 ms**, and **27 ms** during a 5-upload burst. Two things a
+thread can't give came with it: a stuck job is killed after 60 s and a fresh
+worker takes over, and a crash in an audio library loses one upload, not the
+site. The web process picks the clip ID before the job starts so it can remove
+whatever a killed job left behind.
+
+**The memory cost was underestimated twice.** First guess "+300 MB", then a
+bare-imports measurement said "+65 MB"; the real total is **about 420 MB** (web
+96 MB, worker 315 MB after a long clip, Python's process helper 11 MB) against
+about 300 MB before, so **+120 MB**. Job accepted 420 MB with the numbers in
+hand. Measure the running service, not an import.
+
+**Short clips never produce the "busy" 503.** A typical clip takes about 3 s, so
+five at once simply queue inside the 20 s wait and all succeed. "1–2 processed,
+the rest 503" only appears with long clips (two 60 s clips fit in 20 s; the
+other three are turned away). That is the intended behaviour, not a gap.
+
+**Retention runs in-process, not from a systemd timer.** A timer would need a
+second unit file, and only `echo.service` is in the sudo allowlist. The pass
+runs at startup, on every save and from a 24-hour loop in the app.
+
+**The 1 GB cap measures clip data**: playback copies + feature files + the
+SQLite file. Not the samples, and not the 2.5 MB numba cache that also lives in
+`data/`.
+
+**A 503 is refunded against the upload limit; a failed or rejected file is not.**
+Being turned away because Echo is busy shouldn't cost a visitor one of their ten.
+
+**The CSP allows `blob:` in `script-src`, and nothing weaker.** The first policy
+(`script-src 'self'`) passed every pytest check and left the 3D view blank: the
+axis-label library (troika, via drei `<Text>`) runs a worker that loads its own
+code with `importScripts(blobURL)`. `'unsafe-eval'` did not fix it; `blob:` did.
+A blob URL can only be minted by script already running on the page.
+
+**The History delete button takes two presses** (the first arms it, moving focus
+away disarms it). A confirm dialog inside a sheet is heavier than the risk
+needs, and one accidental tap on a phone shouldn't lose a recording.
+
+**Existing clips were dropped, not migrated (L7).** 44 ownerless clips (42 from
+before, 2 from this session's own checks) were deleted at deploy.
+
 ## Gotchas & platform quirks
 
 ### pyin is slow on the Pi (Phase 1 → FIXED session 5)
@@ -667,6 +717,76 @@ keep their filename for the list, a filename is visible to anyone using the
 site. `main._display_name` strips directories and control characters and caps
 it at 80 characters, but it does not hide the name itself.
 
+### `MemoryMax` does nothing on this Pi (session 16)
+The kernel boots with `cgroup_disable=memory` (Raspberry Pi OS default), so the
+memory controller doesn't exist and systemd silently ignores `MemoryMax=`.
+`systemctl show echo -p MemoryCurrent` reading `[not set]` is the tell.
+`CPUQuota=` works (the cpu controller is on). The unit keeps `MemoryMax=1G` for
+the day it's enabled and relies on `OOMScoreAdjust=500` meanwhile: under memory
+pressure the kernel kills Echo first and systemd restarts it. Enabling the
+controller means adding `cgroup_enable=memory` to `/boot/firmware/cmdline.txt`
+and rebooting the Pi (Job's call).
+
+### librosa needs a writable numba cache under `ProtectHome=read-only` (session 16)
+librosa's numba functions cache compiled code next to their source in `.venv`.
+With the home folder read-only numba finds no place to write and librosa fails
+to import. The unit sets `NUMBA_CACHE_DIR=…/data/.numba-cache`. A cold cache
+costs about **24 s** on the first analysis; it is warm now and survives
+restarts. If `data/.numba-cache` is ever deleted, the first clip after that is
+slow once.
+
+### uvicorn rewrites the client address from `X-Forwarded-For` (session 16)
+By default uvicorn trusts forwarded headers from 127.0.0.1, which is where
+cloudflared connects from, so `request.client.host` becomes the visitor's IP.
+Echo's rule "believe `CF-Connecting-IP` only when the peer is localhost" needs
+the real socket peer, hence `--no-proxy-headers` in the unit.
+
+### FastAPI saves the whole upload to disk before the route runs (session 16)
+The 20 MB check inside `/upload` only runs after the multipart body has been
+spooled to `/tmp`. Through Cloudflare a body is capped at 100 MB; from the LAN
+there is no cap. The upload guard middleware refuses on `Content-Length` (and
+on the rate limit) before any of the body is read.
+
+### Cloudflare Access only adds its header on the paths the app covers (session 16)
+`Cf-Access-Jwt-Assertion` is present on `/me`, `/capture` and
+`/api/schema-audit`, not on `/api/me`. The browser does send the
+`CF_Authorization` cookie (the same signed token) to every path, so `/api/me`
+reads that. And when the Access session expires, `/capture` does not return
+Echo's 404: Cloudflare answers with a redirect to its sign-in page, which
+`fetch` reports as a network failure unless `redirect: 'manual'` is set. The app
+treats a redirect, 404, 401 or 403 from `/capture` as "signed out".
+
+### Secure cookies and plain-http test hosts (session 16)
+- Chromium sends a `Secure` cookie over plain http only to the hostname
+  `localhost`. On `127.0.0.1` it stores the cookie and never sends it, so every
+  request looks like a new browser. The Playwright base URL is `localhost`.
+- httpx (FastAPI's TestClient) only returns a `Secure` cookie over https, so
+  the test clients use `https://testserver`. It also silently drops a cookie
+  set by hand with `domain="testserver"`; `conftest.set_cookie` sets one that
+  is really sent. A test that sets a cookie the client never sends passes for
+  the wrong reason.
+- Opening Echo directly at `http://<pi>:8014` on the LAN therefore gives a
+  browser with no lasting history. Only the tunnel URL is supported.
+
+### A response with `Set-Cookie` isn't edge-cached (session 16)
+Cloudflare won't cache a response that sets a cookie, so `echo_vid` is set only
+on the app page and the clip routes, never on `/`, `/assets/*`, samples or
+`/api/health`.
+
+### Cloudflare injects its Web Analytics script, and the CSP blocks it (session 16)
+The zone adds `static.cloudflareinsights.com/beacon.min.js` to HTML pages at the
+edge. Under the new CSP the browser refuses it (one console error per page
+load; nothing visible breaks, but Echo's page views stop being counted). Open
+decision for Job: allow it in the CSP, or turn the injection off for this
+hostname. See the follow-ups below.
+
+### The test suite's first import touched the real database (session 16)
+`tests/test_schema.py` (SCHEMA-005) audits the real `data/`, which runs
+`init_db()` on it. So the live DB gained the `owner_id` / `last_seen_at`
+columns during development, before the deploy. Harmless here (nullable columns
+the old code ignored), but worth knowing: a schema change reaches the real DB
+the first time pytest runs, not at deploy.
+
 ## Manual follow-ups for Job
 
 - **Browser-recording from a real phone (Phase 4):** the `MediaRecorder` flow
@@ -685,3 +805,18 @@ it at 80 characters, but it does not hide the name itself.
   "accessibility ≥ 95" score was not measured.~~ **Done 2026-11-12 —
   Lighthouse added as a dev dependency; `npm run lighthouse` scores 100 on
   mobile and desktop.**
+- **Public launch (v1.7, 2026-11-13) — needs Job:**
+  1. Cloudflare Access: create the self-hosted application for
+     `echo.job-joseph.com` covering `/me`, `/capture` and `/api/schema-audit`
+     (Allow, your email only, one-time PIN, session 1 month); put the AUD tag
+     and team domain in `/home/jcube/.config/echo/access.env`; then
+     `sudo -n systemctl restart echo`. Until then the Pi mic is off for
+     everyone, you included.
+  2. Sign in at `https://echo.job-joseph.com/me` and record with the Pi mic.
+  3. Record on Android Chrome; record on an iPhone (never tried) and note the
+     result here.
+  4. Decide the Cloudflare Web Analytics question (see the gotcha above).
+  5. A free uptime check on `https://echo.job-joseph.com/api/health`.
+  6. Optional: `MaxRetentionSec=14day` for journald (Echo no longer logs IP
+     addresses, but the journal has no time limit); a Cloudflare rate-limiting
+     rule on `/upload` as an outer guard; enabling the memory cgroup.
