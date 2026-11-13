@@ -41,6 +41,8 @@ verification/
 # Working notes: spec, learnings, test plan, verification log, design briefs
 # and mockups. Internal, kept on the Pi only (CLAUDE.md "Repo layout").
 /docs/
+# Host-specific rules for Claude Code sessions (sudo scope, paths, tunnel).
+CLAUDE.local.md
 
 # Env & misc
 .env

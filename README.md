@@ -113,6 +113,8 @@ echo/
 ├── e2e/               Playwright specs + the Lighthouse runner
 ├── test-fixtures/     Attribution manifest for the test recordings
 ├── package.json       Playwright + Lighthouse tooling only (not the app)
+├── SPEC.md            Feature and API contract
+├── LEARNINGS.md       Decisions and gotchas found during the build
 ├── CLAUDE.md          Working rules for Claude Code sessions in this repo
 └── ROADMAP.md         Milestones and status
 ```
@@ -126,7 +128,9 @@ echo/
   are created on first run and are not in git. The database holds metadata
   only, never audio.
 
-See [ROADMAP.md](ROADMAP.md) for what has shipped and what is planned.
+See [SPEC.md](SPEC.md) for the full feature/API contract,
+[LEARNINGS.md](LEARNINGS.md) for decisions and gotchas found during the build,
+and [ROADMAP.md](ROADMAP.md) for what has shipped and what is planned.
 
 ---
 
@@ -208,13 +212,13 @@ The extraction engine is standalone and testable without the API:
 ## Deployment
 
 Runs as the `echo` systemd service on the Pi (port 8014), exposed at
-`echo.job-joseph.com` through the `pi-home` Cloudflare Tunnel. Bare-metal
+`echo.job-joseph.com` through a Cloudflare Tunnel. Bare-metal
 systemd only — no Docker.
 
 - The unit is sandboxed: read-only home, writes only under `data/`,
   `CPUQuota=200%`, `OOMScoreAdjust=500`, no access log.
 - The two Cloudflare Access settings (`ECHO_CF_ACCESS_AUD`,
-  `ECHO_CF_TEAM_DOMAIN`) live in `~/.config/echo/access.env`, outside the repo.
+  `ECHO_CF_TEAM_DOMAIN`) come from an env file outside the repo.
   Without them the Pi mic and the other owner-only routes stay off.
 - Trace a Pi mic capture with `journalctl -u echo -o cat | grep '^capture'`.
 - Not yet tested on iOS Safari (no device available).

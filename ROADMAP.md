@@ -31,7 +31,6 @@ this Pi.
 | v1.6 — Frontend Redesign (Design v2) | ✅ Shipped (2026-11-12) |
 | v1.7 — Public Launch | ✅ Shipped (2026-11-13). Known gap: iOS Safari untested |
 | v1.8 — Bring Your Own Pi Mic | 💡 Idea |
-| v2 — Avian Visitors integration | 📋 Planned |
 | Deferred / Ideas | 💡 Idea |
 
 ---
@@ -41,7 +40,7 @@ this Pi.
 ### M1. Feature extraction engine — ✅ Shipped
 The heart of the project — everything else is plumbing around it.
 - Standalone Python module: audio file in → per-frame feature JSON out
-  (`t`, `pitch`, `timbre`, `motion`, `amplitude`) per docs/SPEC.md
+  (`t`, `pitch`, `timbre`, `motion`, `amplitude`) per SPEC.md
 - Verified against a real sample clip: sane pitch range, amplitude 0–1,
   no NaNs, ~20ms hop, point count capped at a few thousand
 - **Done when:** running the module on a test clip prints valid JSON
@@ -68,7 +67,7 @@ The heart of the project — everything else is plumbing around it.
 - **Done when:** a clip recorded on the phone renders end-to-end
 
 ### M5. Pi mic capture — ✅ Shipped
-- `POST /capture` triggers `~/bin/rec` for a selected duration (max 60s)
+- `POST /capture` triggers the Pi's recording wrapper for a selected duration (max 60s)
 - Mic acquired for the recording window only, released immediately
 - **Done when:** a Pi-captured clip renders end-to-end
 
@@ -84,7 +83,7 @@ The heart of the project — everything else is plumbing around it.
 ### M8. Deployment — ✅ Shipped
 - systemd service (`echo.service`), port 8014
 - `echo.job-joseph.com` via Cloudflare Tunnel ingress rule
-- Register port in dev-meta PORTS.md (done by Job, not CC)
+- Port registered by Job
 - **Done when:** `curl https://echo.job-joseph.com/history` returns real data
   from outside the LAN
 
@@ -122,7 +121,7 @@ candidates and keeping only the 4 that measurably closed it.
   benefits most — follow the stack's standard vite-plugin-pwa pattern).
   *Absorbed into v1.6 S1 and shipped there (2026-11-12)*
 - 📋 **Planned** — iOS Safari MediaRecorder hardening if testing surfaces
-  issues (untested on a real device — see `docs/LEARNINGS.md` follow-ups).
+  issues (untested on a real device — see `LEARNINGS.md` follow-ups).
   **Still untested as of 2026-11-13: no iPhone available. A known gap, carried
   past the v1.7 launch**
 - 🚧 **In progress** — Visual tuning to better match the reference reel.
@@ -136,7 +135,7 @@ candidates and keeping only the 4 that measurably closed it.
   loading states. Palette mapped to Echo's existing colors (pixel-identical
   before/after, verified by diff), the 3D trail and spectral-panel line
   colors untouched. Pinned to `shadcn@2.10.0` (Tailwind v3-compatible; the
-  latest CLI targets Tailwind v4). See `docs/LEARNINGS.md` "shadcn/ui component
+  latest CLI targets Tailwind v4). See `LEARNINGS.md` "shadcn/ui component
   polish" and `docs/VERIFICATION_LOG.md` Session 7.
 
 ---
@@ -150,7 +149,7 @@ Contrast, Slope, Flatness, HNR, and a Tonality composite — plotted against the
 shared time axis, with a hover/tap readout (physical value + unit per line), a
 playhead driven by the same scrubber state as the spectrogram, and per-line legend
 toggles. Works for history + sample clips. Formulas, fixed ranges, and the
-tonality/crest/slope/HNR judgment calls are documented in `docs/LEARNINGS.md`
+tonality/crest/slope/HNR judgment calls are documented in `LEARNINGS.md`
 (session 6). Also shipped alongside it: the **feature-schema versioning system**
 (Part 0) — see the binding rule in `CLAUDE.md`.
 
@@ -325,7 +324,7 @@ feature schema — no `FEATURE_SCHEMA_VERSION` bump.
 
 **Known gap: iOS Safari is untested** (no iPhone available). Browser recording,
 the PWA install and the Privacy dialog have never been run there. See
-`docs/LEARNINGS.md`.
+`LEARNINGS.md`.
 
 Every item in `docs/LAUNCH.md` §5 passes on the live site, with the iPhone
 result recorded as "untested" (`docs/VERIFICATION_LOG.md` Session 16). Final state:
@@ -344,67 +343,6 @@ to four sessions; a smaller upload-only agent is a possible first step.
 
 ---
 
-## v2 — Avian Visitors as a Client of Echo (future) — 📋 Planned
-
-**Reaffirmed decision:** species identification (BirdNET — Cornell's
-acoustic classifier) stays entirely inside Avian Visitors. Echo remains
-bird-agnostic and never runs a classification model itself; it only ever
-receives a species label as metadata from Avian via the bridge below. This
-was explicitly reconsidered (not just defaulted to) when Job asked about
-adding recognition directly to Echo, and confirmed as the right split.
-
-**Correction worth keeping on record:** there's no standalone "Cornell API
-key" that identifies a species from audio. BirdNET is a model you run
-locally against the clip, not an API call — that's the actual work Avian
-Visitors does. The eBird API key is a separate, unrelated thing: it only
-filters species lists by region (e.g. Karnataka), it doesn't listen to
-anything.
-
-Echo and Avian Visitors are **independent projects with independent goals**:
-
-- **Echo** — 3D acoustic-geometry visualization of any sound. Knows nothing
-  about birds or species. Complete on its own.
-- **Avian Visitors** (BirdNET-Pi fork, kachō-e collage,
-  `birds.job-joseph.com`) — 24/7 bird detection and identification. Complete
-  on its own. Built later as its own repo, service, and setup per
-  ideas.md #31. Echo is not touched during that build.
-
-The relationship, when both exist: **Avian becomes one more client of Echo's
-API** — no different from the phone or a file upload. Avian already records a
-clip for every detection it identifies; sending that clip to
-`POST /upload` gives each detection a 3D visualization as a bonus. This is
-not a workflow, not continuous, and not required by either side — if the
-integration breaks or is removed, both projects still work fully alone.
-
-- **On Avian's side:** a small post-detection hook (or on-demand script) that
-  POSTs a detection clip to Echo with optional metadata — species,
-  confidence, detected-at
-- **On Echo's side:** two optional columns (`species`, `confidence`) and a
-  gallery filter. Nothing else changes. Can even ship after the hook exists —
-  clips arrive fine without metadata.
-
-### Shared mic — decided approach
-Echo's Pi-mic use is rare and short (seconds per day); Avian wants the mic
-continuously. Plan of record: **arbitration** — Echo's `/capture` stops the
-birdnet service, records, and restarts it in a try/finally so birdnet always
-resumes even if the recording fails. Requires two scoped sudoers lines
-(exact subcommand + service name only). **Fallback:** a second USB mic
-(~₹500) removes the need for arbitration entirely — buy it if arbitration
-proves flaky in practice.
-
-### Open items for when Avian is scoped (not Echo's concern)
-- **Mic placement:** the Pi and mic live inside the house — 24/7 outdoor
-  bird detection likely needs the mic at a window (USB extension cable), and
-  the ₹500 second mic could double as the dedicated window mic, solving
-  placement and sharing in one purchase
-- **Retention pressure:** bird detections arrive far faster than manual
-  uploads — revisit Echo's retention limits (since v1.7: 20 per browser, 500
-  clips / 1 GB site-wide) with per-source_type retention so auto-ingested
-  clips never evict manually recorded ones. Avian would also hit the upload
-  rate limit (10 per hour, 30 per day) and needs its own allowance
-
----
-
 ## Deferred / Ideas (no commitment) — 💡 Idea
 
 - Live transcription overlay — only if a lightweight local model proves
@@ -419,6 +357,11 @@ proves flaky in practice.
 ---
 
 ## Changelog
+
+- **2026-11-13** — Public-repo clean-up (Job): host-specific rules moved from
+  `CLAUDE.md` to a private `CLAUDE.local.md`; plans for other projects moved
+  out of this roadmap into private notes; `SPEC.md` and `LEARNINGS.md` are
+  back at the root. `docs/` stays private (not in git).
 
 - **2026-11-13** — Repo tidied (Job): the public repo now tracks only
   `README.md`, `CLAUDE.md` and `ROADMAP.md` as documents. SPEC, LEARNINGS,
@@ -445,7 +388,7 @@ proves flaky in practice.
   browser, new retention (L6), the owner-only gate, the analysis worker
   process, rate limits, the service lock-down, security headers. Decided
   (Job): drop the 44 existing clips (L7); Access settings in
-  `~/.config/echo/access.env` (L8); `/api/health` keeps `status` (L9); analysis
+  a private env file outside the repo (L8); `/api/health` keeps `status` (L9); analysis
   in a separate process at about 420 MB total; FAQ says "under 15 seconds".
   Stays 🚧 until Job confirms the `/me` recording and the phone checks.
 - **2026-11-12** — Added v1.7 Public Launch (🚧 in progress, brief in
