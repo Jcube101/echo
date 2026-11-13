@@ -51,7 +51,8 @@ The heart of the project — everything else is plumbing around it.
 - SQLite metadata only (file paths, never audio blobs)
 - 20MB / 60s limits enforced server-side
 - Raw audio discarded after processing; small transcoded playback copy kept
-- 50-entry retention with automatic cleanup
+- 50-entry retention with automatic cleanup (replaced in v1.7 by 20 per
+  browser, 500 clips / 1 GB site-wide and 30 days inactive)
 - **Done when:** all endpoints verified with curl, cleanup rule demonstrated
 
 ### M3. 3D visualization — ✅ Shipped
@@ -99,8 +100,9 @@ quantified as genuinely empty (not assumed) with
 candidates and keeping only the 4 that measurably closed it.
 - Curated store under `samples/` (audio + features + attribution), served by
   dedicated `/samples*` endpoints — never a `clips` table row, so the
-  50-entry retention rule can't evict it
-- "🔊 Sample sounds" drawer in the UI, distinct from the personal History
+  retention rules can't evict it
+- A Samples sheet in the UI (first built as a "Sample sounds" drawer; renamed
+  and given an icon-plus-word button in v1.6), distinct from the personal History
   gallery, each card showing attribution (recordist, license, source link)
   per the source clip's Creative Commons license
 - Two independent sources, tracked per-entry via a `provider` field:
@@ -109,7 +111,7 @@ candidates and keeping only the 4 that measurably closed it.
   - 11 non-bird animal sounds (Lion, Wolf, Cow, Dog, Cat, Frog, Cricket, Pig,
     Red Deer, Bullfrog, Camel) from the Freesound API, seeded by
     `verification/fetch_freesound_samples.py`
-- **Done when:** the drawer lists the sample clips and each renders/plays
+- **Done when:** the sheet lists the sample clips and each renders/plays
   end-to-end with attribution visible
 
 ---
@@ -125,7 +127,8 @@ candidates and keeping only the 4 that measurably closed it.
   past the v1.7 launch**
 - 🚧 **In progress** — Visual tuning to better match the reference reel.
   Point glow + additive-blend teal styling shipped in the post-launch visual
-  overhaul; trail time-fade and camera presets are still open
+  overhaul (the teal was replaced by the loudness colours in v1.6, D4); trail
+  time-fade and camera presets are still open
 - 📋 **Planned** — Shareable links to a specific clip's visualization
 - ✅ **Shipped (session 7, 2026-07-19)** — shadcn/ui component polish: Buttons,
   Select, Tabs, Sheet + Card (History/Samples), and real toast feedback
@@ -293,9 +296,10 @@ feature schema — no `FEATURE_SCHEMA_VERSION` bump.
   Access (L5): Echo verifies the Access token itself and fails closed; `/me`,
   `/api/me`; the Pi mic button shows only for the signed-in owner. Job set up
   Access and recorded after signing in at `/me`, on his phone and on desktop.
-  A first attempt hung for five minutes (the end of the request body reached
-  Echo late); fixed by sending no body, with a kill guard on `rec`, an abort
-  timer in the app and a per-request trace log
+  A first attempt hung for five minutes: the end of the request body reached
+  Echo late. The cause was not reproduced (a later request in the same form
+  arrived at once). Captures now send no body, with a kill guard on `rec`, an
+  abort timer in the app and a per-request trace log
 - ✅ **Shipped (live 2026-11-13)** — §3 Protect the Pi: one analysis at a time
   in a separate worker process with a 60 s kill (503 when busy), upload rate
   limits (429), ffmpeg timeouts, a locked-down `echo.service` (exposure
@@ -334,7 +338,8 @@ pytest 205, Vitest 130, Playwright 42, Lighthouse accessibility 100.
 Design note: **`docs/BYO_PI_MIC.md`**. Starts only after v1.7 ships. Processing
 stays on Job's Pi; the mic becomes a small optional agent anyone can install on
 their own Raspberry Pi and pair with their own browser. `/capture` is retired
-when this lands; the `/me` Access gate stays for owner-only pages. Roughly three
+when this lands, but its one-at-a-time capture tracking and cancel/stop
+(built in v1.7) are reused; the `/me` Access gate stays for owner-only pages. Roughly three
 to four sessions; a smaller upload-only agent is a possible first step.
 
 ---
@@ -393,8 +398,10 @@ proves flaky in practice.
   the ₹500 second mic could double as the dedicated window mic, solving
   placement and sharing in one purchase
 - **Retention pressure:** bird detections arrive far faster than manual
-  uploads — revisit Echo's 50-entry cap with per-source_type retention so
-  auto-ingested clips never evict manually recorded ones
+  uploads — revisit Echo's retention limits (since v1.7: 20 per browser, 500
+  clips / 1 GB site-wide) with per-source_type retention so auto-ingested
+  clips never evict manually recorded ones. Avian would also hit the upload
+  rate limit (10 per hour, 30 per day) and needs its own allowance
 
 ---
 
@@ -407,11 +414,16 @@ proves flaky in practice.
 - Export: short screen-recorded MP4/GIF of an orbiting trail for sharing
 - Ollama-generated plain-language description of a clip's acoustic character
 - NVMe migration for larger history retention (Phase 2 hardware, only if
-  the 50-entry cap actually pinches)
+  the site-wide cap of 500 clips / 1 GB actually pinches)
 
 ---
 
 ## Changelog
+
+- **2026-11-13** — Docs audit after v1.7: README, SPEC, DESIGN_V2, TEST_PLAN and
+  both `docs/` notes brought in line with the code (private history, new
+  retention, owner-only Pi mic, cancel/stop, multi-select delete). No code
+  changes.
 
 - **2026-11-13** — **v1.7 Public Launch shipped.** Added after launch at Job's
   request: cancel / stop for Pi mic recordings, and multi-select delete in

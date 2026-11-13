@@ -665,7 +665,8 @@ or invoked (CLAUDE.md hardware rule).
   serves the file. Contract: CLAUDE.md standing guardrail *"StaticFiles is
   mounted last in main.py, after all API routes"*.
 - [x] API-019 — **API-integration · P2 · sandboxed** — `GET /api/health` →
-  `{"status": "ok"}` (the readiness probe HW-003 depends on).
+  exactly `{"ok": true, "status": "ok"}` (the readiness probe HW-003 depends
+  on `status`; decision L9).
 - [x] API-020 — **API-integration · P1 · sandboxed** — `POST /capture` with
   `REC_WRAPPER` pointed at a nonexistent path → **503** "Pi mic wrapper
   (~/bin/rec) not found." (This is also what CI machines would hit by
@@ -678,11 +679,14 @@ or invoked (CLAUDE.md hardware rule).
   `~/bin/rec`.**
 - [x] API-022 — **API-integration · P1 · sandboxed** — `/capture` failure
   surfaces — stub exits non-zero → **503** with stderr excerpt (the ALSA
-  card-shift symptom is *reported*, never retried/fixed, per CLAUDE.md);
-  stub that sleeps past `duration + 20` → **504** "Mic capture timed out."
+  card-shift symptom is *reported*, never retried/fixed, per CLAUDE.md) and
+  `X-Echo-Error: mic_not_found`; a rec that overruns its limit (now
+  `duration + 10`, see CAP-002/003) → **504** with `X-Echo-Error:
+  mic_timeout`. Like API-020…023, runs as the signed-in owner.
 - [x] API-023 — **API-integration · P1 · sandboxed** — `/capture` validation —
   `duration: 61` and `duration: 0` → **422** (pydantic `gt=0,
-  le=MAX_DURATION_S`). Contract: SPEC.md *"Body {duration} (≤60)"*.
+  le=MAX_DURATION_S`). Contract: SPEC.md *"`duration` (≤60) in the query
+  string … or a JSON body `{duration}`"*.
 
 ---
 
@@ -692,10 +696,12 @@ Direct calls to `process_audio` / `_enforce_retention` with temp dirs + temp
 DB. Fully sandboxed (real ffmpeg for transcodes).
 
 - [x] STO-001 — **Unit · P0 · sandboxed** — retention evicts oldest row AND
-  files — with `RETENTION_LIMIT` monkeypatched to 3, saving a 4th clip
-  deletes the oldest clip's DB row **and** both its files (`data/audio/*.opus`
-  + `data/features/*.json`). Contract: CLAUDE.md locked *"Last 50 entries;
-  oldest entry's files + DB row deleted on each save beyond 50"*.
+  files — with the site-wide cap `RETENTION_GLOBAL_CLIPS` monkeypatched to 3,
+  saving a 4th clip deletes the oldest clip's DB row **and** both its files
+  (`data/audio/*.opus` + `data/features/*.json`). Contract: CLAUDE.md locked
+  History retention row (decision L6: *"Site-wide: 500 clips … oldest deleted
+  first. Each deletion removes the DB row and both files"*). The per-browser,
+  size and 30-day rules are RET-001…008.
 - [x] STO-002 — **Unit · P0 · sandboxed** — retention ordering — with mixed
   `created_at` timestamps inserted out of order, the survivors are exactly
   the N newest by `created_at` (not by insertion order or id).
@@ -714,7 +720,8 @@ DB. Fully sandboxed (real ffmpeg for transcodes).
   artifacts on failure"*.
 - [x] STO-005 — **Unit · P1 · sandboxed** — metadata-only DB — the `clips`
   schema stores only strings/floats/datetime (id, created_at, source_type,
-  duration_s, feature_path, audio_path); after several saves the SQLite file
+  source_name, duration_s, feature_path, audio_path, schema_version, owner_id,
+  last_seen_at); after several saves the SQLite file
   stays small (< ~100 KB) proving no blob leaked in. Contract: CLAUDE.md
   locked *"Never store audio blobs in the DB"*.
 - [x] STO-006 — **Unit · P1 · sandboxed** — `probe_duration()` — raises
@@ -727,9 +734,9 @@ DB. Fully sandboxed (real ffmpeg for transcodes).
   — after churning enough clips through `process_audio` to trigger multiple
   evictions (limit lowered), every `samples/audio/*.opus` and
   `samples/features/*.json` still exists and `list_samples()` still returns
-  all 3 — samples are never `clips` rows *by construction*, so eviction can
+  every entry — samples are never `clips` rows *by construction*, so eviction can
   never see them. Contract: CLAUDE.md locked *"Sample library exception …
-  never a clips DB row, never subject to the 50-entry retention rule"*;
+  never a clips DB row, never subject to the retention rules above"*;
   LEARNINGS.md Part D.
 - [x] STO-009 — **Unit · P2 · sandboxed** — playback copy validity — the
   produced `.opus` is ffprobe-decodable, mono, and dramatically smaller than

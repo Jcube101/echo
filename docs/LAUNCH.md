@@ -4,6 +4,11 @@
 friends and strangers, with no logins.
 **Order:** do this **before** the "Bring your own Pi mic" work (`docs/BYO_PI_MIC.md`).
 
+> **✅ Shipped.** Everything in §1–4 is built and live, and every item in §5
+> passes on the live site except the iPhone check (untested, no device). The
+> sections below are the brief as written; where the build differs, see
+> "As built" at the end.
+
 CLAUDE.md rules apply in full. This touches the DB schema (a new column) but **not**
 the feature schema — no `FEATURE_SCHEMA_VERSION` bump, no `migrate_schema.py`.
 
@@ -195,3 +200,38 @@ attempt them.
 - Recording works on Android Chrome, and the iPhone result is noted.
 - ROADMAP.md, CLAUDE.md (retention row, with Job's OK), VERIFICATION_LOG.md and
   LEARNINGS.md are updated.
+
+---
+
+## As built (2026-11-13)
+
+Where the shipped code differs from, or adds to, the brief above:
+
+- **Retention runs in-process** (on every save, at startup, and a daily loop
+  inside the app), not from a systemd timer.
+- **The Access token** is read from the `Cf-Access-Jwt-Assertion` header or the
+  `CF_Authorization` cookie; the issuer is checked as well as the signature,
+  audience and expiry.
+- **Analysis runs in a separate worker process** (about 420 MB in total), killed
+  after 60 s, on top of the one-at-a-time rule.
+- **`MemoryMax` is inert on this Pi**; `OOMScoreAdjust=500` and `CPUQuota=200%`
+  do the protecting (§3).
+- **CSP:** `blob:` is allowed for scripts and connections (the 3D text worker
+  needs it), and Cloudflare Web Analytics' two origins are allowed (Job's call).
+- **Logs:** Echo writes no IP addresses and no visitor IDs (no access log). The
+  14-day limit on the journal is not set; it is an optional step for Job
+  (`MaxRetentionSec=14day`).
+- **`/capture` takes its duration in the URL** (`/capture?duration=10`, no
+  body), `rec` is killed at duration + 10 s, the app gives up at duration +
+  75 s, and each request leaves a trace in the journal. These were added after
+  a capture hung for five minutes behind Access; the cause was not reproduced
+  (LEARNINGS.md).
+- **Added after launch, at Job's request:** one tracked capture at a time with
+  `DELETE /capture?action=cancel|stop`; `POST /history/delete` and multi-select
+  in the History sheet.
+- **§2's last point is refined:** when the BYO Pi mic work replaces `/capture`,
+  it should reuse the capture tracking and cancel/stop behaviour
+  (`docs/BYO_PI_MIC.md`).
+- **Checks done by Job:** Access set up; Pi mic recording after `/me` on phone
+  and desktop; browser recording on Android Chrome; uptime monitor on
+  `/api/health`. **iOS Safari: untested.**

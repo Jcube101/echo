@@ -3,7 +3,8 @@
 **Status:** ✅ Shipped — all five sessions complete (2026-11-12) (see ROADMAP.md, "v1.6 — Frontend Redesign").
 **Design canvas:** https://claude.ai/artifact/LTDnZh1wrRMpBHxwdpmnaH (private to Job — Claude Code can't open it).
 **Screenshots:** `docs/design-v2/` — **open the matching PNG before building each screen** and match it. Where a PNG and this text disagree, this text wins; flag the mismatch to Job.
-**Scope:** frontend only, plus one small backend route. No changes to extraction, the feature schema, storage, retention or any API response.
+**The screenshots are pre-launch mockups.** They were drawn before v1.7 and have not been redrawn. They don't show: multi-select in History (§4.3a), the updated FAQ copy (§5: "under 15 seconds", the new "Is my audio kept?" answer, the Privacy link), the Pi mic recording screen (§4.3a), the per-clip delete button, or the "Your clips live in this browser only." note. They also show the Pi mic button, which is now visible only to the signed-in owner.
+**Scope (of the redesign itself):** frontend only, plus one small backend route. No changes to extraction, the feature schema, storage, retention or any API response. Retention, private history and the owner-only Pi mic changed later, in v1.7 (`docs/LAUNCH.md`).
 
 This file is the source of truth for the redesign. Build it in the session order
 at the bottom, one session per milestone, each one shippable on its own.
@@ -110,7 +111,8 @@ small 13–15px. Eyebrow labels: mono, 12–14px, uppercase, 0.12em tracking.
 
 Radii: pills and primary buttons `999px`; cards `20–28px`; inner tiles `10–16px`.
 Touch targets at least 44px tall. Icons: inline stroke SVG (2px). **No emoji** —
-replace the current 🔊 and ☰ button labels with icons + words.
+the Samples and History buttons are an icon plus the word (the old emoji
+labels were removed in S2).
 
 ---
 
@@ -176,7 +178,8 @@ name, duration, provider, play icon) with "All 14 samples →", the same FAQ
 
 - **Header (72px):** wordmark (links to `/`) · segmented tabs **3D Trail /
   Spectral panel** · spacer · **Record** (rust) · **Upload** · **Pi mic** with a
-  duration chip ("10 s ▾") · divider · **Samples** · **History**.
+  duration chip ("10 s ▾") · divider · **Samples** · **History**. Since v1.7
+  the Pi mic and its chip are shown only to the signed-in owner.
 - **Stage:** `night` background, the existing R3F scene restyled (see §6 on trail
   colour). Top-left camera presets **Free / Front / Side / Top** (the open roadmap
   item — build only if cheap; otherwise leave them out). Bottom-left mono caption
@@ -227,7 +230,8 @@ hover the chart for any moment".
 ![App home, phone](docs/design-v2/05-app-phone-home.png)
 
 Wordmark + History button. A large rust **record** circle (168px) with soft rings,
-"Tap to record", "Up to 60 seconds". Below it, two buttons: **Upload** and **Pi mic · 10 s**.
+"Tap to record", "Up to 60 seconds". Below it, two buttons: **Upload** and **Pi mic · 10 s**
+(since v1.7 the Pi mic button is there only for the signed-in owner; everyone else sees Upload alone).
 "Or try a sample" list (thumbnail, name, duration) with "All 14".
 
 ### 4.6 Phone — recording
@@ -331,13 +335,15 @@ browser only."
    *Done when:* it matches §4.1–4.2, Lighthouse accessibility ≥ 95, and the page
    weighs < 300 KB without fonts.
 5. **Tests + docs.** Update the Vitest tests and Playwright e2e specs whose
-   selectors depend on old labels (e.g. "🔊 Samples", "☰ History", drawer
-   structure); add e2e for `/` → `/app` and the FAQ. Log in
+   selectors depend on old labels (the emoji-prefixed Samples and History
+   buttons, drawer structure); add e2e for `/` → `/app` and the FAQ. Log in
    `VERIFICATION_LOG.md`, learnings in `LEARNINGS.md`, statuses in `ROADMAP.md`.
 
 **Not in scope:** any change to `extraction.py`, feature JSON, `FEATURE_SCHEMA_VERSION`,
 the DB schema, retention, upload limits or `/capture` behaviour. If a session finds
-it needs one, stop and ask Job.
+it needs one, stop and ask Job. (This limit applied to the five redesign
+sessions. v1.7 changed the DB schema, retention and `/capture` afterwards, with
+Job's approval.)
 
 ---
 
@@ -347,3 +353,8 @@ it needs one, stop and ask Job.
 - The 3D trail in them is a flat SVG projection. Build it with the existing R3F scene, not as an image. Only the landing-page illustrations are static SVGs (§4.1).
 - History rows show placeholders (`[DATE · TIME]`, `[FILENAME]`). Fill them from `/history`.
 - The phone screens are 390×844, rendered at 2×.
+- **They are pre-launch.** Nothing added in v1.7 is in them: History has no
+  delete button, no "Select" and no browser-only note; the FAQ shows the old
+  answers; there is no Pi mic recording screen and no Privacy link; and the Pi
+  mic button appears for everyone. For those, this text (§4.3a, §5) is the
+  only reference.

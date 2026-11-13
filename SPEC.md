@@ -1,7 +1,7 @@
-# Echo — v1 Specification
+# Echo — Specification
 
-This is Echo's own working spec, adapted from the build brief. It is the
-contract the code is held to. Anything marked **locked** comes from
+This is Echo's own working spec, adapted from the v1 build brief and kept
+current through v1.7 (public launch). It is the contract the code is held to. Anything marked **locked** comes from
 `CLAUDE.md` and is not up for change in a build session.
 
 ---
@@ -23,11 +23,15 @@ that call Echo's `/upload` as an ordinary client.
    not just in the browser.
 2. **In-browser recording** — the phone-at-the-park flow. `MediaRecorder`
    captures ≤60 s from the device mic and POSTs the blob to the **same
-   `/upload` endpoint** — no separate pipeline. Android Chrome is the target;
-   iOS Safari quirks are noted in `LEARNINGS.md` and do not block v1.
-3. **Pi USB mic capture** — `/capture` triggers `~/bin/rec` for the requested
-   duration (≤60 s), then the same pipeline. The mic is acquired only for the
-   recording window and released immediately — never held in the background.
+   `/upload` endpoint** — no separate pipeline. Android Chrome is the target
+   (confirmed by Job, 2026-11-13); **iOS Safari is untested** (no device), a
+   known gap noted in `LEARNINGS.md`.
+3. **Pi USB mic capture — owner only.** `/capture` triggers `~/bin/rec` for
+   the requested duration (≤60 s), then the same pipeline. The mic is acquired
+   only for the recording window and released immediately — never held in the
+   background. Only Job can use it, after signing in at `/me` (Cloudflare
+   Access); one capture runs at a time, and it can be stopped early or
+   cancelled.
 
 Plus a built-in **sample library** (not user input): a small curated set of
 example clips shipped with the app so someone with no sound to hand can still
@@ -87,7 +91,7 @@ pts/sec over the analyzed span (unless capped at 3000).
 | Method | Path            | Behavior |
 |--------|-----------------|----------|
 | POST   | `/upload`       | Accepts an audio file **or** a browser-recorded blob (same validation). The clip belongs to the uploading browser. Limits: 10 per hour and 30 per day, per browser and per IP (429 with a plain message); one analysis at a time (503 `Echo is busy — try again in a moment.` + `Retry-After: 15` after a 20 s wait). Runs extraction, saves a history row + a transcoded playback copy, returns `{id, features}`. Optional form field `source`: `recording` marks a browser recording; otherwise the clip is an `upload` and its filename is kept (bare name, ≤80 chars) for the history list. The field only labels the clip. |
-| POST   | `/capture`      | **Owner only** (valid Cloudflare Access token, else 404). `duration` (≤60) in the query string (`/capture?duration=10`, no body: what the app sends) or a JSON body `{duration}`. Runs `~/bin/rec`, then the upload pipeline. Returns `{id, features}`. `rec` is killed at duration + 10 s (504). Mic failures are 503 with an `X-Echo-Error` reason: `mic_busy`, `mic_not_found`, `mic_timeout`, `mic_failed`. One capture at a time: a second request while one runs is a 503 `mic_busy`. Every request leaves a timeline in the log. |
+| POST   | `/capture`      | **Owner only** (valid Cloudflare Access token, else 404). `duration` (≤60) in the query string (`/capture?duration=10`, no body: what the app sends) or a JSON body `{duration}`. Runs `~/bin/rec`, then the upload pipeline. Returns `{id, features}`. `rec` is killed at duration + 10 s (504, `X-Echo-Error: mic_timeout`). Other mic failures are 503 with an `X-Echo-Error` reason: `mic_busy`, `mic_not_found`, `mic_failed`. One capture at a time: a second request while one runs is a 503 `mic_busy`. Every request leaves a timeline in the log. |
 | GET    | `/history`      | **This browser's clips only.** List of `{id, created_at, source_type, name, duration_s}`, newest first. `source_type` is `upload`, `recording` or `pi_mic`; `name` is an uploaded file's name, else `null`. |
 | GET    | `/history/{id}` | Full feature JSON + playback audio URL for one clip. 404 unless this browser owns it. Opening a clip restarts its 30-day clock. |
 | DELETE | `/history/{id}` | Owner only: deletes the row, the playback copy and the feature file. 204; 404 for anyone else. |
@@ -127,7 +131,9 @@ always 404.
 **Hardening (v1.7):** API docs (`/docs`, `/redoc`, `/openapi.json`) are off
 unless `ECHO_DEV=1`. Every response carries `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: same-origin`, `Permissions-Policy: microphone=(self)` and a
-Content-Security-Policy (own files only, no inline scripts, no eval). Uploads
+Content-Security-Policy (own files plus `blob:` for the 3D text worker, no
+inline scripts, no eval; the only third-party origins are Cloudflare Web
+Analytics' two, Job's call). Uploads
 must contain an audio stream; every ffprobe/ffmpeg call has a 30 s timeout;
 analysis runs in a separate worker process that is killed after 60 s.
 
@@ -177,13 +183,20 @@ the repo manifest. Each manifest entry carries a `provider` field
   discards the audio without uploading.
 - Spectral panel: seven descriptors as stacked lanes on the scrubber's time
   axis, each toggled by its name, with values at the playhead and on hover.
-- Pi capture button + duration selector calling `/capture`.
+- Pi capture button + duration selector calling `/capture`, shown **only to
+  the signed-in owner** (`/api/me`). While it records, the app shows "Pi mic
+  is listening" with a countdown, **Stop** (keep what was recorded) and
+  **Cancel** (save nothing). If the answer is lost (phone locked), the app
+  finds the new clip in History.
 - Playback scrubber synced to the trail (the current point highlights as
   playback advances).
 - 2D spectrogram strip below the 3D view, with a **log/mel frequency axis
   (Hz)** and a **time axis** (aligned to the scrubber), scaled crisply to fill
   its container at any viewport width.
-- History gallery listing past clips, click to reload via `/history/{id}`.
+- History sheet listing **this browser's** clips, click to reload via
+  `/history/{id}`. It says "Your clips live in this browser only.", has a
+  delete button per clip (two presses), and a selection mode (Select, or a
+  long press on touch; Select all; "Delete N clips" with a confirm step).
 - Samples sheet listing the curated sample library (distinct from the
   personal History), each card showing its attribution. A loaded sample's
   credit (recordist, licence, source link) is always visible: in the sidebar
@@ -199,11 +212,14 @@ Served in production by FastAPI `StaticFiles` from `frontend/dist`, mounted
 ## Deployment (locked)
 
 - systemd service `echo.service`, `Type=simple`, uvicorn on **8014**, restart
-  on failure.
+  on failure. Since v1.7 it is sandboxed (read-only home, writes only under
+  `data/`, `CPUQuota=200%`, `OOMScoreAdjust=500`) and runs with
+  `--no-access-log --no-proxy-headers`.
 - `echo.job-joseph.com` via one new ingress block in the `pi-home` Cloudflare
   Tunnel config, following `CLAUDE.md`'s editing rules exactly.
-- **Done when** `curl https://echo.job-joseph.com/history` returns real data
-  from the public URL.
+- **Done when** (v1) `curl https://echo.job-joseph.com/history` returns real
+  data from the public URL. Since v1.7 that request returns `[]`: a client
+  with no cookie is a new browser with no clips.
 
 ---
 

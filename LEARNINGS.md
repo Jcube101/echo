@@ -496,8 +496,9 @@ Chosen over a client-side WebAudio FFT and over a separate PNG file/endpoint.
 quantizes to uint8 (0–255), and returns a compact column-major flat list
 (~16 KB for a 5 s clip). It rides inside the same `{features, spectrogram}`
 JSON the clip already stores, so: no browser opus-decoding (which is flaky
-headless), no extra endpoint, and it's cleaned up by the *same* 50-entry
-retention rule (one file per clip). The React `<Spectrogram>` paints it to a
+headless), no extra endpoint, and it's cleaned up by the *same*
+retention rule (one file per clip; a single limit of 50 at the time, replaced
+in v1.7 by the limits in CLAUDE.md). The React `<Spectrogram>` paints it to a
 canvas via `putImageData`. Backward-compat: `/history/{id}` still reads the
 older plain-array files (spectrogram = null).
 
