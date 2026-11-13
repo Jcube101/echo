@@ -9,7 +9,7 @@ knows nothing about what made the sound.
 It is public, with no accounts: each browser sees only the clips it made (see
 *Privacy and retention* below).
 
-Two pages (Design v2, see [DESIGN_V2.md](DESIGN_V2.md)):
+Two pages:
 
 - **`/`** — a static landing page that explains Echo and links into the app.
 - **`/app`** — the app. It has three layouts: a phone app below 640px (home,
@@ -82,8 +82,6 @@ Live at **https://echo.job-joseph.com**.
   (a friendly 503 when busy), upload limits of 10 per hour and 30 per day per
   browser and per IP (429), and a sandboxed systemd unit.
 
-The full brief is [docs/LAUNCH.md](docs/LAUNCH.md).
-
 ---
 
 ## Architecture
@@ -91,7 +89,7 @@ The full brief is [docs/LAUNCH.md](docs/LAUNCH.md).
 ```
 echo/
 ├── main.py            FastAPI app: routes + StaticFiles (mounted last)
-├── extraction.py      Standalone librosa feature-extraction engine (M1)
+├── extraction.py      Standalone librosa feature-extraction engine
 ├── db.py              SQLAlchemy models + SQLite session + retention limits
 ├── storage.py         Audio transcode, clip deletion, retention
 ├── visitor.py         The per-browser `echo_vid` cookie
@@ -103,25 +101,20 @@ echo/
 ├── build_landing_art.py  Draws the landing page's static art from samples/
 ├── migrate_schema.py / schema_audit.py  Feature-schema versioning tools
 ├── requirements.txt   Backend Python deps (installed into .venv)
-├── data/              Runtime data (gitignored)
-│   ├── echo.sqlite    Metadata only — never audio blobs
-│   ├── audio/         Small transcoded playback copies (opus/mp3)
-│   └── features/      Per-clip feature JSON
-├── samples/           Curated sample library (COMMITTED product asset)
+├── samples/           Curated sample library (a committed product asset)
 │   ├── samples.json   Per-sample attribution + metadata
 │   ├── audio/         Opus playback copies
 │   └── features/      Pre-extracted feature JSON
 ├── frontend/          React 18 + Vite 6 + Tailwind + react-three-fiber
 │   ├── src/Landing.jsx        Landing page (/)
 │   ├── src/App.jsx            The app (/app), all three layouts
-│   ├── src/assets/landing/    Generated art + sample details (committed)
-│   └── dist/          Production build served by StaticFiles (gitignored)
-├── docs/              LAUNCH.md (v1.7 brief), BYO_PI_MIC.md (v1.8 idea),
-│                      design-v2/ (redesign mockups)
+│   └── src/assets/landing/    Generated art + sample details
 ├── tests/             pytest (backend, deployment, landing-art checks)
 ├── e2e/               Playwright specs + the Lighthouse runner
-├── package.json       Playwright + Lighthouse verification tooling ONLY (not the app)
-└── verification/      Overnight self-check screenshots + logs (gitignored)
+├── test-fixtures/     Attribution manifest for the test recordings
+├── package.json       Playwright + Lighthouse tooling only (not the app)
+├── CLAUDE.md          Working rules for Claude Code sessions in this repo
+└── ROADMAP.md         Milestones and status
 ```
 
 - **Backend** lives at the repo root (not a `backend/` subfolder) so systemd
@@ -129,9 +122,11 @@ echo/
 - **Frontend** is a separate Vite app in `frontend/` with its own
   `package.json`. In production its `dist/` build is served by the FastAPI
   app on the same origin — no CORS, no separate host.
+- **Runtime files** (the SQLite database, playback copies and feature files)
+  are created on first run and are not in git. The database holds metadata
+  only, never audio.
 
-See [SPEC.md](SPEC.md) for the full feature/API contract and
-[LEARNINGS.md](LEARNINGS.md) for decisions and gotchas found during the build.
+See [ROADMAP.md](ROADMAP.md) for what has shipped and what is planned.
 
 ---
 
@@ -214,8 +209,7 @@ The extraction engine is standalone and testable without the API:
 
 Runs as the `echo` systemd service on the Pi (port 8014), exposed at
 `echo.job-joseph.com` through the `pi-home` Cloudflare Tunnel. Bare-metal
-systemd only — no Docker. See Phase 8 in `VERIFICATION_LOG.md` for the
-original install steps and Session 16 for the public-launch changes.
+systemd only — no Docker.
 
 - The unit is sandboxed: read-only home, writes only under `data/`,
   `CPUQuota=200%`, `OOMScoreAdjust=500`, no access log.

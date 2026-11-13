@@ -35,9 +35,12 @@ frontend/dist/
 /test-fixtures/xeno-canto/*
 !/test-fixtures/xeno-canto/MANIFEST.md
 
-# Overnight verification artifacts (screenshots/logs live on the Pi only;
-# VERIFICATION_LOG.md in the repo root IS committed)
+# Overnight verification artifacts (screenshots/logs live on the Pi only)
 verification/
+
+# Working notes: spec, learnings, test plan, verification log, design briefs
+# and mockups. Internal, kept on the Pi only (CLAUDE.md "Repo layout").
+/docs/
 
 # Env & misc
 .env
@@ -45,7 +48,7 @@ verification/
 *.log
 .DS_Store
 
-# Test tooling (TEST_PLAN.md) — generated fixtures/artifacts, not source
+# Test tooling — generated fixtures/artifacts, not source
 .pytest_cache/
 .coverage
 /e2e/.fixtures/

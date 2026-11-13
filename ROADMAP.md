@@ -41,7 +41,7 @@ this Pi.
 ### M1. Feature extraction engine — ✅ Shipped
 The heart of the project — everything else is plumbing around it.
 - Standalone Python module: audio file in → per-frame feature JSON out
-  (`t`, `pitch`, `timbre`, `motion`, `amplitude`) per SPEC.md
+  (`t`, `pitch`, `timbre`, `motion`, `amplitude`) per docs/SPEC.md
 - Verified against a real sample clip: sane pitch range, amplitude 0–1,
   no NaNs, ~20ms hop, point count capped at a few thousand
 - **Done when:** running the module on a test clip prints valid JSON
@@ -122,7 +122,7 @@ candidates and keeping only the 4 that measurably closed it.
   benefits most — follow the stack's standard vite-plugin-pwa pattern).
   *Absorbed into v1.6 S1 and shipped there (2026-11-12)*
 - 📋 **Planned** — iOS Safari MediaRecorder hardening if testing surfaces
-  issues (untested on a real device — see `LEARNINGS.md` follow-ups).
+  issues (untested on a real device — see `docs/LEARNINGS.md` follow-ups).
   **Still untested as of 2026-11-13: no iPhone available. A known gap, carried
   past the v1.7 launch**
 - 🚧 **In progress** — Visual tuning to better match the reference reel.
@@ -136,8 +136,8 @@ candidates and keeping only the 4 that measurably closed it.
   loading states. Palette mapped to Echo's existing colors (pixel-identical
   before/after, verified by diff), the 3D trail and spectral-panel line
   colors untouched. Pinned to `shadcn@2.10.0` (Tailwind v3-compatible; the
-  latest CLI targets Tailwind v4). See `LEARNINGS.md` "shadcn/ui component
-  polish" and `VERIFICATION_LOG.md` Session 7.
+  latest CLI targets Tailwind v4). See `docs/LEARNINGS.md` "shadcn/ui component
+  polish" and `docs/VERIFICATION_LOG.md` Session 7.
 
 ---
 
@@ -150,7 +150,7 @@ Contrast, Slope, Flatness, HNR, and a Tonality composite — plotted against the
 shared time axis, with a hover/tap readout (physical value + unit per line), a
 playhead driven by the same scrubber state as the spectrogram, and per-line legend
 toggles. Works for history + sample clips. Formulas, fixed ranges, and the
-tonality/crest/slope/HNR judgment calls are documented in `LEARNINGS.md`
+tonality/crest/slope/HNR judgment calls are documented in `docs/LEARNINGS.md`
 (session 6). Also shipped alongside it: the **feature-schema versioning system**
 (Part 0) — see the binding rule in `CLAUDE.md`.
 
@@ -215,7 +215,7 @@ trail concept, just on richer axes.
 
 ## v1.6 — Frontend Redesign (Design v2) — ✅ Shipped
 
-Full brief, tokens, screen specs, final copy and open decisions: **`DESIGN_V2.md`**.
+Full brief, tokens, screen specs, final copy and open decisions: **`docs/DESIGN_V2.md`**.
 Frontend only, plus one backend route; no extraction/schema/storage changes.
 
 - ✅ **Shipped** — S1 Routing + PWA: landing at `/`, app at `/app` (backend
@@ -233,7 +233,7 @@ Frontend only, plus one backend route; no extraction/schema/storage changes.
   Spectral panel as seven stacked lanes with a label column. Camera presets
   (D6) left out at Job's call. Known gaps, all from "no API changes": history
   clips can't show a filename or tell an upload from a browser recording.
-  Deviations from the mockups are listed in VERIFICATION_LOG.md Session 11
+  Deviations from the mockups are listed in docs/VERIFICATION_LOG.md Session 11
 - ✅ **Shipped** — S3 Phone app: idle home, recording screen, result screen.
   **Live (2026-11-12)** below 640px: home (record circle, Upload,
   Pi mic, four samples), full-screen recording (countdown ring, live level
@@ -257,7 +257,7 @@ Frontend only, plus one backend route; no extraction/schema/storage changes.
   to date. Final state: pytest 103, Vitest 84, Playwright 29 of 30 (E2E-010
   is the long-standing no-audio-session gap), Lighthouse accessibility 100
 
-Open after v1.6 (none blocking): camera presets (DESIGN_V2.md D6, left out at
+Open after v1.6 (none blocking): camera presets (docs/DESIGN_V2.md D6, left out at
 Job's call); real icons to replace the placeholder PWA icons; `/history`
 stores neither a filename nor whether a clip was uploaded or recorded, so
 history clips read "Upload or recording"; the 3D axis labels still fetch
@@ -325,10 +325,10 @@ feature schema — no `FEATURE_SCHEMA_VERSION` bump.
 
 **Known gap: iOS Safari is untested** (no iPhone available). Browser recording,
 the PWA install and the Privacy dialog have never been run there. See
-`LEARNINGS.md`.
+`docs/LEARNINGS.md`.
 
 Every item in `docs/LAUNCH.md` §5 passes on the live site, with the iPhone
-result recorded as "untested" (`VERIFICATION_LOG.md` Session 16). Final state:
+result recorded as "untested" (`docs/VERIFICATION_LOG.md` Session 16). Final state:
 pytest 205, Vitest 130, Playwright 42, Lighthouse accessibility 100.
 
 ---
@@ -420,6 +420,11 @@ proves flaky in practice.
 
 ## Changelog
 
+- **2026-11-13** — Repo tidied (Job): the public repo now tracks only
+  `README.md`, `CLAUDE.md` and `ROADMAP.md` as documents. SPEC, LEARNINGS,
+  TEST_PLAN, VERIFICATION_LOG and DESIGN_V2 moved into `docs/`, which is
+  gitignored and lives on the Pi only.
+
 - **2026-11-13** — Docs audit after v1.7: README, SPEC, DESIGN_V2, TEST_PLAN and
   both `docs/` notes brought in line with the code (private history, new
   retention, owner-only Pi mic, cancel/stop, multi-select delete). No code
@@ -450,7 +455,7 @@ proves flaky in practice.
   complete.** Follow-ups listed at the end of the v1.6 section.
 - **2026-11-12** — Shipped v1.6 S4 (landing page). Decided (Job): no bird
   language in the landing copy — hero sub-lines and one FAQ question reworded,
-  DESIGN_V2.md §5 updated. Lighthouse added as a dev dependency
+  docs/DESIGN_V2.md §5 updated. Lighthouse added as a dev dependency
   (`npm run lighthouse`): accessibility 100 on mobile and desktop.
 - **2026-11-12** — Shipped v1.6 S3 (phone app: home, recording, result).
   Recording end to end and Cancel confirmed by Job on his Android phone.
@@ -462,7 +467,7 @@ proves flaky in practice.
   (`start_url: /app`) + service worker. Android install and `?record=1`
   confirmed by Job on his phone. The v1.x PWA item is absorbed here.
 - **2026-11-11** — Added v1.6 Frontend Redesign (Design v2) as planned, with
-  the full brief in `DESIGN_V2.md`. Decided: landing page at `/`, app at `/app`,
+  the full brief in `docs/DESIGN_V2.md`. Decided: landing page at `/`, app at `/app`,
   no species/ID language on the site.
 - **2026-07-19** — Shipped shadcn/ui component polish (session 7, frontend
   only): Button/Select/Tabs/Sheet+Card/toast primitives replace the raw HTML

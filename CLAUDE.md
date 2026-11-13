@@ -134,7 +134,7 @@ origin-response limit (HTTP 524) on `*.job-joseph.com`. Any synchronous
 endpoint served through the tunnel must return well inside that window — if
 a future feature needs longer, it needs an async job-status pattern, not a
 config tweak. (This is why `/upload`/`/capture` extraction speed is tuned
-to stay in single-digit seconds — see `LEARNINGS.md`.)
+to stay in single-digit seconds — see `docs/LEARNINGS.md`.)
 
 ---
 
@@ -161,7 +161,7 @@ whenever any stored clip is behind `FEATURE_SCHEMA_VERSION`, and
 stored feature JSONs or migrate with a one-off script — go through
 `migrate_schema.py` so the version stamp and DB column stay consistent. The audit
 + migration runner live at the repo root on purpose (`verification/` is
-gitignored). See `LEARNINGS.md` "Session 6 — feature-schema versioning".
+gitignored). See `docs/LEARNINGS.md` "Session 6 — feature-schema versioning".
 
 ## Public-Launch Guardrails (v1.7, `docs/LAUNCH.md`)
 
@@ -187,13 +187,13 @@ Echo is public, with no logins. These hold in every later session:
   Cancel = SIGKILL the group and discard; Stop = SIGINT and keep the file
   (arecord leaves a valid WAV on SIGINT). CAP-010…020 guard this.
 - **Behind Cloudflare Access, put parameters in the URL and send no request
-  body** (`/capture?duration=`, `/capture?action=`). See LEARNINGS.md "Pi mic
+  body** (`/capture?duration=`, `/capture?action=`). See docs/LEARNINGS.md "Pi mic
   capture hang: cause not reproduced".
 - **`/capture` stays traceable and bounded.** The app sends it with no
   request body (`?duration=`); `rec` is killed, process group and all, at
   duration + 10 s; `capture_trace.py` logs each step with no IPs, visitor IDs
   or token values. Read it with `journalctl -u echo -o cat | grep '^capture'`.
-  Give any new long-running route the same treatment (LEARNINGS.md "Pi mic
+  Give any new long-running route the same treatment (docs/LEARNINGS.md "Pi mic
   capture hang").
 - **Heavy work goes through `_analyse()`** (one at a time, in the analysis
   worker process, with the 60 s kill). Don't call `process_audio` from a
@@ -225,4 +225,10 @@ Echo is public, with no logins. These hold in every later session:
   set (see the Sample library exception row in Locked Decisions)
 - Never touch `PORTS.md` or anything in other repos — report the port used,
   Job registers it himself
-- Session learnings go in `LEARNINGS.md`, not in this file
+- Session learnings go in `docs/LEARNINGS.md`, not in this file
+- **Repo layout (Job, 2026-11-13):** the repo is public. Only `README.md`,
+  `CLAUDE.md` and `ROADMAP.md` are tracked documents. Everything under
+  `docs/` (SPEC, LEARNINGS, TEST_PLAN, VERIFICATION_LOG, DESIGN_V2, LAUNCH,
+  BYO_PI_MIC, the design mockups) is **gitignored working notes that exist
+  only on this Pi**: keep writing to them, never `git add -f` them, and don't
+  link to them from `README.md`. `README.md` describes only what is in git
